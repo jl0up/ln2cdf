@@ -1,2 +1,3 @@
 /build/ 
 /.devcontainer/ 
+/main/secret.h
