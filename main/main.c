@@ -10,7 +10,7 @@
 #include "chip_info.h"
 #include "delayed_restart.h"
 #include "wifi_station.h"
-
+#include "adc_oneshot.h"
 
 
 /* Wifi connection parameters (wifi_station.c) */
@@ -25,6 +25,8 @@ void app_main(void)
     print_chip_information();
 
     wifi_station_connect();
+
+    adc_read_loop();
 
     delayed_restart();
 }
