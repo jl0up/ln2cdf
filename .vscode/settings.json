@@ -10,5 +10,11 @@
     "idf.flashType": "UART",
     "idf.customExtraVars": {
         "IDF_TARGET": "esp32c6"
+    },
+    "files.associations": {
+        "stdio.h": "c",
+        "task.h": "c",
+        "freertos.h": "c",
+        "delayed_restart.h": "c"
     }
 }
