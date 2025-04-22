@@ -9,6 +9,7 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
+
 /*---------------------------------------------------------------
         ADC General Macros
 ---------------------------------------------------------------*/
@@ -40,8 +41,27 @@
 
 #define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_12
 
-static int adc_raw[2][10];
-static int voltage[2][10];
-static bool example_adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle);
-static void example_adc_calibration_deinit(adc_cali_handle_t handle);
-void adc_read_loop(void);
+
+
+
+typedef struct {
+    adc_oneshot_unit_handle_t adc1_handle;
+    adc_oneshot_unit_handle_t adc2_handle;
+    adc_oneshot_unit_init_cfg_t init_config1;
+    adc_oneshot_unit_init_cfg_t init_config2;
+    adc_oneshot_chan_cfg_t config;
+    adc_cali_handle_t adc1_cali_chan0_handle;
+    adc_cali_handle_t adc1_cali_chan1_handle;
+    adc_cali_handle_t adc2_cali_handle;
+    bool do_calibration1_chan0;
+    bool do_calibration1_chan1;
+    bool do_calibration2;
+    int adc_raw[2][10];
+    int voltage[2][10];
+} adc_t;
+
+void adc_oneshot_init(adc_t *adc);
+
+void adc_oneshot_get(adc_t *adc);
+
+void adc_oneshot_teardown(adc_t *adc);
