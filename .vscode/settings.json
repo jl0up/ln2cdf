@@ -15,6 +15,9 @@
         "stdio.h": "c",
         "task.h": "c",
         "freertos.h": "c",
-        "delayed_restart.h": "c"
+        "delayed_restart.h": "c",
+        "i2c.h": "c",
+        "gpio.h": "c",
+        "esp_lvgl_port.h": "c"
     }
 }

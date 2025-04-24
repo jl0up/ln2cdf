@@ -12,6 +12,7 @@
 #include "wifi_station.h"
 #include "adc_oneshot.h"
 
+void unity_run_menu(void);
 
 void app_main(void)
 {
@@ -25,6 +26,11 @@ void app_main(void)
      ********************/
     wifi_station_connect();
 
+    /****************
+     *** TFT test ***
+     ****************/
+    printf("TEST ESP LVGL port\n\r");
+    unity_run_menu();     
 
     /****************
      *** ADC read ***
@@ -42,8 +48,9 @@ void app_main(void)
     adc.init_config2 = init_config2;
     adc_oneshot_init(&adc);
 
+
     // Reading ADC in loop
-    while (1) {
+    for (int i=0 ; i < 10 ; i++) {
         adc_oneshot_get(&adc);
 
         printf("ADC1.0: %4d", adc.adc_raw[0][0]);
@@ -66,6 +73,7 @@ void app_main(void)
     /********************
      *** END-ADC read ***
      ********************/
+
 
 
 
