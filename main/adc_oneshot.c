@@ -14,7 +14,7 @@ void adc_oneshot_init(adc_t* adc)
 
     //-------------ADC1 Config---------------//
     adc->config.atten = EXAMPLE_ADC_ATTEN;
-    adc->config.bitwidth = ADC_BITWIDTH_DEFAULT;
+    adc->config.bitwidth = EXAMPLE_ADC_BITWIDTH;
 
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc->adc1_handle, EXAMPLE_ADC1_CHAN0, &(adc->config)));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc->adc1_handle, EXAMPLE_ADC1_CHAN1, &(adc->config)));

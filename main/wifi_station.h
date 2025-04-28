@@ -24,8 +24,8 @@
    If you'd rather not, just change the below entries to strings with
    the config you want - ie #define EXAMPLE_WIFI_SSID "mywifissid"
 */
-#define EXAMPLE_ESP_WIFI_SSID      CONFIG_ESP_WIFI_SSID
-#define EXAMPLE_ESP_WIFI_PASS      CONFIG_ESP_WIFI_PASSWORD
+// #define EXAMPLE_ESP_WIFI_SSID      CONFIG_ESP_WIFI_SSID
+// #define EXAMPLE_ESP_WIFI_PASS      CONFIG_ESP_WIFI_PASSWORD
 #define EXAMPLE_ESP_MAXIMUM_RETRY  CONFIG_ESP_MAXIMUM_RETRY
 #define EXAMPLE_ESP_WIFI_SAE_MODE  ESP_WPA3_SAE_PWE_BOTH
 #define EXAMPLE_ESP_WIFI_PW_ID     ""
@@ -59,8 +59,6 @@
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WAPI_PSK
 #endif
 
-/* FreeRTOS event group to signal when we are connected*/
-static EventGroupHandle_t s_wifi_event_group;
 
 /* The event group allows multiple bits for each event, but we only care about two events:
  * - we are connected to the AP with an IP
@@ -72,7 +70,7 @@ static EventGroupHandle_t s_wifi_event_group;
 
 // static int s_retry_num = 0;
 
-static void event_handler(void* arg, esp_event_base_t event_base,
+void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data);
 
 void wifi_init_sta(void);

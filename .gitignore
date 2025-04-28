@@ -2,3 +2,4 @@
 /.devcontainer/ 
 /main/secret.h
 sdkconfig.old
+/managed_components/

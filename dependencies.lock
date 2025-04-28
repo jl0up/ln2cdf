@@ -1,0 +1,17 @@
+dependencies:
+  idf:
+    source:
+      type: idf
+    version: 5.4.1
+  lvgl:
+    dependencies: []
+    source:
+      path: C:\Portable\esp\frameworks\v5.4.1\esp-idf\components\lvgl
+      type: local
+    version: 9.2.2
+direct_dependencies:
+- idf
+- lvgl/lvgl
+manifest_hash: 02cb8b52ded940f05a38c28f7ec4fcbbe4ffb7727f8a8153323dcadd6884e609
+target: esp32c6
+version: 2.0.0

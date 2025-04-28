@@ -9,6 +9,7 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
+#define N_AVG 31
 
 /*---------------------------------------------------------------
         ADC General Macros
@@ -27,7 +28,7 @@
  * On ESP32C3, ADC2 is no longer supported, due to its HW limitation.
  * Search for errata on espressif website for more details.
  */
-#define EXAMPLE_USE_ADC2            1
+#define EXAMPLE_USE_ADC2            0
 #endif
 
 #if EXAMPLE_USE_ADC2
@@ -39,8 +40,8 @@
 #endif
 #endif  //#if EXAMPLE_USE_ADC2
 
-#define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_12
-
+#define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_0
+#define EXAMPLE_ADC_BITWIDTH        ADC_BITWIDTH_DEFAULT
 
 
 
@@ -58,6 +59,8 @@ typedef struct {
     bool do_calibration2;
     int adc_raw[2][10];
     int voltage[2][10];
+    int adc_raw_mem[2][10][N_AVG];
+    int voltage_mem[2][10][N_AVG];
 } adc_t;
 
 void adc_oneshot_init(adc_t *adc);
