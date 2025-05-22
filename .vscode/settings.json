@@ -24,6 +24,7 @@
         "rope": "c",
         "*.tcc": "c",
         "regex": "c",
-        "esp_http_client.h": "c"
+        "esp_http_client.h": "c",
+        "string.h": "c"
     }
 }

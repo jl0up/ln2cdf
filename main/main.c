@@ -15,7 +15,14 @@
 #include "sntp_client.h"
 #include "google_sheet.h"
 
-#define WAIT_TIME_MS 60*1000
+#define WAIT_TIME_MS 10*1000/N_AVG
+#define UPLOAD_THRESHOLD_PERCENT 1.0
+#define R_EFF 46.0 // Ohm
+#define I_EMPTY 3.913
+#define I_FULL 20.131
+#define ERR_BUF_SIZE 512
+
+const static char *TAG = "ln2cdf: main.c";
 
 int compare(const void *a, const void *b) {
     // int *valA = (int*) a;
@@ -27,7 +34,6 @@ int compare(const void *a, const void *b) {
         return -1;
 }
 
-
 float average_voltage(int* mem, int n){
     int avg = 0;
     int k = n/5;
@@ -35,7 +41,7 @@ float average_voltage(int* mem, int n){
         // ESP_LOGD( "average_voltage()", "%d | %d | %d", n, k, i);
         avg += mem[k];
     }
-    return (float)avg / (float)(n - k - k) / 1000.;
+    return (float)avg / (float)(n - k - k);
 }
 
 int average_adc_raw(int* mem, int n){
@@ -51,6 +57,8 @@ int average_adc_raw(int* mem, int n){
 
 void app_main(void)
 {
+    char err_buf[ERR_BUF_SIZE] = "";
+
     /*****************
      *** Chip info ***
      *****************/
@@ -69,6 +77,15 @@ void app_main(void)
     initialize_sntp();
 
 
+    /*************************
+     *** upload parameters ***
+     *************************/
+    float level_0 = -100.;
+    float level_1 = -100.;
+    float level_last_logged_0 = -100.;
+    float level_last_logged_1 = -100.;
+
+
     /****************
      *** ADC read ***
      ****************/
@@ -85,6 +102,7 @@ void app_main(void)
     adc.init_config2 = init_config2;
     adc_oneshot_init(&adc);
 
+
     // Reading ADC in loop
     unsigned int idx = 0;
     while (1) {
@@ -92,61 +110,65 @@ void app_main(void)
 
         adc_oneshot_get(&adc);
 
-        adc.adc_raw_mem[0][0][idx%N_AVG] = adc.adc_raw[0][0];
-        printf("ADC1.0: %4d", adc.adc_raw[0][0]);
-        if (adc.do_calibration1_chan0) {
-            adc.voltage_mem[0][0][idx%N_AVG] = adc.voltage[0][0];
-            printf(" (%4d mV)", adc.voltage[0][0]);
+        *err_buf = '\0';
+        for(int j=0;j<1;j++){
+            for(int i=0;i<2;i++){
+                // add sample to circular memory
+                snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "ADC%d.%d: ", j+1, i);
+                snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "%4d", adc.adc_raw[j][i]);
+                adc.adc_raw_mem[j][i][idx%N_AVG] = adc.adc_raw[j][i];
+                snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%4d mV)", adc.voltage[j][i]);
+                adc.voltage_mem[j][i][idx%N_AVG] = adc.voltage[j][i];
+                snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " | ");
+            }
         }
-        printf(" | ");
-        
-        adc.adc_raw_mem[0][1][idx%N_AVG] = adc.adc_raw[0][1];
-        printf("ADC1.1: %4d", adc.adc_raw[0][1]);
-        if (adc.do_calibration1_chan0) {
-            adc.voltage_mem[0][1][idx%N_AVG] = adc.voltage[0][1];
-            printf(" (%4d mV)", adc.voltage[0][1]);
-        }
-        printf("\n");
-        
+        ESP_LOGI(TAG, "%s", err_buf);
+
         if (idx%N_AVG == 0){
-            printf("AVERAGING: idx=%d\tidxMODN_AVG=%d\tN_AVG/2=%d\n", idx, idx%N_AVG, N_AVG/2);
-
-            // apply a median filter
-            qsort(adc.adc_raw_mem[0][0], N_AVG, sizeof(int), compare);
-            qsort(adc.adc_raw_mem[0][1], N_AVG, sizeof(int), compare);
-            if (adc.do_calibration1_chan0) {
-                qsort(adc.voltage_mem[0][0], N_AVG, sizeof(int), compare);
-                qsort(adc.voltage_mem[0][1], N_AVG, sizeof(int), compare);
+            ESP_LOGD(TAG, "AVERAGING: idx=%d\tidxMODN_AVG=%d\tN_AVG/2=%d\n", idx, idx%N_AVG, N_AVG/2);
+            
+            *err_buf = '\0';
+            for(int j=0;j<1;j++){
+                for(int i=0;i<2;i++){
+                    // apply a median filter
+                    qsort(adc.adc_raw_mem[j][i], N_AVG, sizeof(int), compare);
+                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "ADC%d.%d: ", j+1, i);
+                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "median=%4d", adc.adc_raw_mem[j][i][N_AVG/2]);
+                    qsort(adc.voltage_mem[j][i], N_AVG, sizeof(int), compare);
+                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%4d mV)", adc.voltage_mem[j][i][N_AVG/2]);
+                    // calculate average excluding median-filtered outliers
+                    adc.adc_raw_avg[j][i] = average_adc_raw(adc.adc_raw_mem[j][i], N_AVG);
+                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, ", avg=%6.1f", adc.adc_raw_avg[j][i]);
+                    adc.voltage_avg[j][i] = average_voltage(adc.voltage_mem[j][i], N_AVG);
+                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%6.1f mV)", adc.voltage_avg[j][i]);
+                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " | ");
+                }
             }
+            ESP_LOGI(TAG, "%s", err_buf);
 
-            printf("ADC1.0: %4d", adc.adc_raw_mem[0][0][N_AVG/2]);
-            printf(" [%4d]", average_adc_raw(adc.adc_raw_mem[0][0], N_AVG));
-            if (adc.do_calibration1_chan0) {
-                printf(" (%4d mV)", adc.voltage_mem[0][0][N_AVG/2]);
-                printf(" [%5.1f mV]", 1000.*average_voltage(adc.voltage_mem[0][0], N_AVG));
-            }
-            printf(" | ");
     
-            printf("ADC1.1: %4d", adc.adc_raw_mem[0][1][N_AVG/2]);
-            printf(" [%4d]", average_adc_raw(adc.adc_raw_mem[0][1], N_AVG));
-            if (adc.do_calibration1_chan0) {
-                printf(" (%4d mV)", adc.voltage_mem[0][1][N_AVG/2]);
-                printf(" [%5.1f mV]", 1000.*average_voltage(adc.voltage_mem[0][1], N_AVG));
-            }
-            printf("\n");
-    
+            level_0 = 100 * (adc.voltage_avg[0][0] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
+            level_1 = 100 * (adc.voltage_avg[0][1] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
 
-            // Send to Google Sheets via Google Apps Script
-            if (send_to_google_script(
-                        average_voltage(adc.voltage_mem[0][0], N_AVG),
-                        average_voltage(adc.voltage_mem[0][1], N_AVG),
-                        average_adc_raw(adc.adc_raw_mem[0][0], N_AVG),
-                        average_adc_raw(adc.adc_raw_mem[0][1], N_AVG))
-                    != ESP_OK) {
-                printf("Failed to send data to Google Sheets");
+            if (    (level_0 > level_last_logged_0 + UPLOAD_THRESHOLD_PERCENT)
+                ||  (level_0 < level_last_logged_0 - UPLOAD_THRESHOLD_PERCENT)
+                ||  (level_1 > level_last_logged_1 + UPLOAD_THRESHOLD_PERCENT)
+                ||  (level_1 < level_last_logged_1 - UPLOAD_THRESHOLD_PERCENT) ) {
+                
+                // Send to Google Sheets via Google Apps Script
+                ESP_LOGI(TAG, "Level threshold reached: uploading to Google Sheet");
+                level_last_logged_0 = level_0;
+                level_last_logged_1 = level_1;                
+                if (send_to_google_script(
+                            adc.voltage_avg[0][0] / 1000.,
+                            adc.voltage_avg[0][1] / 1000.,
+                            adc.adc_raw_avg[0][0],
+                            adc.adc_raw_avg[0][1])
+                        != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to send data to Google Sheets");
+                }
             }
         }
-
         vTaskDelay(pdMS_TO_TICKS(WAIT_TIME_MS));
     }
 

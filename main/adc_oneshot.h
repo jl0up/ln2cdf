@@ -9,7 +9,7 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#define N_AVG 31
+#define N_AVG 15
 
 /*---------------------------------------------------------------
         ADC General Macros
@@ -61,6 +61,8 @@ typedef struct {
     int voltage[2][10];
     int adc_raw_mem[2][10][N_AVG];
     int voltage_mem[2][10][N_AVG];
+    float adc_raw_avg[2][10];
+    float voltage_avg[2][10];
 } adc_t;
 
 void adc_oneshot_init(adc_t *adc);
