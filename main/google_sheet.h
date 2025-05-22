@@ -4,8 +4,8 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 
- /* Google Script Configuration */
- #define GOOGLE_SCRIPT_ID "AKfycbzGnmqHohoQdRFfWisrl50etJgSVShO9_mcDPWrczsaDG443c9AHiN7vB9pb2URqEZK" // ID from your deployed Apps Script
-  
+#include "secret.h" // for  #define GOOGLE_SCRIPT_ID "***secret***" // ID from your deployed Apps Script
+
+
  /* Send data to Google Script */
  esp_err_t send_to_google_script(float voltage0, float voltage1, int raw_value0, int raw_value1);
