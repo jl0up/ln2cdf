@@ -25,25 +25,28 @@ Uses Espressif ESP-IDF framwork, not Arduino. Arduino libraries may be added lat
     - [x] using internal ADC for the moment
     - [ ] external ADC modules may be used if more accuracy is needed
 - [x] Automatically fill-up a Google Sheet for logging level
-    - [x] periodic sampling (every 15 min ?)
-    - [ ] threshold based (each time level is down by 2% ?)
+    - [ ] periodic sampling (every 15 min ?)
+    - [x] threshold based (each time level is down by 2% ?)
 - [ ] Automatically send email when level goes below 30%
     - [ ] via Google Sheet
     - [ ] or in the ESP32 ?
-- [ ] Implement login feature to add user info to Google Sheet
-    - [ ] via keypad (4 digits? -> 24 combinations -> max 24 users or a few users and many invalid codes)
+- [x] Implement login feature to add user info to Google Sheet
+    - [x] via keypad (4 digits? -> 24 combinations -> max 24 users or a few users and many invalid codes)
     - [ ] via clickable rotative encoder for selection and TFT display
     - [ ] via smartphone 
 - [ ] Add interlock: withdrawal of LN2 only possible when user identified
     - [ ] Activate existing electrovalve if logged-in
-- [ ] Read ambient temperature
-    - [ ] using DS18B20 1-wire sensor
+- [x] Read ambient temperature
+    - [x] using DS18B20 1-wire sensor
     - [ ] using PT-100 or thermocouple and MAX31865 on SPI/I2C
 - [ ] Read ambient humidity
     - [ ] using SHT-xxx I2C sensor
-- [ ] Display info on TFT (eg. ST7789)
+- [x] Display info on TFT (eg. ST7789)
 - [ ] Read tank pressures
 - [ ] Watch ambient oxygen
     - [ ] Monitor existing low-O2 alarm (binary)
     - [ ] Read existing O2 sensor (easy if it is also a 4-20 mA current loop)
     - [ ] Add O2 sensor
+- [ ] Easy firmware update
+    - [ ] OTA (over the air) with automatic pull from Github branch on boot
+    - [ ] idem but pull update by pressing a button
