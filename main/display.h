@@ -44,6 +44,8 @@ void display_show_status(const char* message, lv_color_t color);
 void display_show_datetime(const char* datetime_str);
 void display_show_last_upload(const char* str);
 void display_show_last_boot(const char* str);
+void display_show_temperature(float temperature);
+void display_show_humidity(float humdity);
 void display_show_levels(float level_0, float level_1);
 void display_show_login_result(const char* identifier, bool success);
 

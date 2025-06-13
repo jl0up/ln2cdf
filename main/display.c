@@ -22,6 +22,8 @@ static lv_obj_t *screen_main;
 static lv_obj_t *label_datetime;
 static lv_obj_t *label_level_0;
 static lv_obj_t *label_level_1;
+static lv_obj_t *label_temperature;
+static lv_obj_t *label_humidity;
 static lv_obj_t *label_last_upload;
 static lv_obj_t *label_last_boot;
 static lv_obj_t *label_password;
@@ -83,19 +85,26 @@ void display_create_ui(void)
     lv_obj_set_style_text_font(label_level_1, &lv_font_montserrat_46, 0);
     lv_obj_align(label_level_1, LV_ALIGN_TOP_MID, 0, 65);
 
-    // Last upload info
-    label_last_upload = lv_label_create(screen_main);
-    lv_label_set_text(label_last_upload, "Last upload:\nUnknown");
-    lv_obj_set_style_text_color(label_last_upload, lv_palette_main(LV_PALETTE_TEAL), 0);
-    lv_obj_set_style_text_font(label_last_upload, &lv_font_montserrat_16, 0);
-    lv_obj_align(label_last_upload, LV_ALIGN_CENTER, 0, 10);
+    // label for temperature
+    label_temperature = lv_label_create(screen_main);
+    lv_label_set_text(label_temperature, "Temp °C");
+    lv_obj_set_style_text_color(label_temperature, lv_palette_main(LV_PALETTE_CYAN), 0);
+    lv_obj_set_style_text_font(label_temperature, &lv_font_montserrat_36, 0);
+    lv_obj_align(label_temperature, LV_ALIGN_TOP_MID, 0, 110);
+
+    // label for humidity
+    label_humidity = lv_label_create(screen_main);
+    lv_label_set_text(label_humidity, "Hum%");
+    lv_obj_set_style_text_color(label_humidity, lv_palette_main(LV_PALETTE_TEAL), 0);
+    lv_obj_set_style_text_font(label_humidity, &lv_font_montserrat_36, 0);
+    lv_obj_align(label_humidity, LV_ALIGN_TOP_MID, 0, 140);
 
     // Password instruction label
     label_password = lv_label_create(screen_main);
     lv_label_set_text(label_password, "Enter password:");
     lv_obj_set_style_text_color(label_password, lv_color_white(), 0);
     lv_obj_set_style_text_font(label_password, &lv_font_montserrat_20, 0);
-    lv_obj_align(label_password, LV_ALIGN_CENTER, 0, 40);
+    lv_obj_align(label_password, LV_ALIGN_CENTER, 0, 45);
 
     // Password dots display
     label_dots = lv_label_create(screen_main);
@@ -117,7 +126,14 @@ void display_create_ui(void)
     lv_obj_set_style_text_color(label_inst, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_set_style_text_font(label_inst, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_align(label_inst, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(label_inst, LV_ALIGN_BOTTOM_MID, 0, -15);
+    lv_obj_align(label_inst, LV_ALIGN_BOTTOM_MID, 0, -30);
+
+    // Last upload info
+    label_last_upload = lv_label_create(screen_main);
+    lv_label_set_text(label_last_upload, "Last upload: unknown");
+    lv_obj_set_style_text_color(label_last_upload, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_set_style_text_font(label_last_upload, &lv_font_montserrat_14, 0);
+    lv_obj_align(label_last_upload, LV_ALIGN_BOTTOM_MID, 0, -15);
 
     // Last boot info
     label_last_boot = lv_label_create(screen_main);
@@ -163,9 +179,24 @@ void display_show_last_upload(const char* str)
 {
     lv_label_set_text(label_last_upload, str);
 }
+
 void display_show_last_boot(const char* str)
 {
     lv_label_set_text(label_last_boot, str);
+}
+
+void display_show_temperature(float temperature)
+{
+    char msg[64];
+    snprintf(msg, sizeof(msg), "%.1f°C", temperature);
+    lv_label_set_text(label_temperature, msg);
+}
+
+void display_show_humidity(float humidity)
+{
+    char msg[64];
+    snprintf(msg, sizeof(msg), "%.1f%%", humidity);
+    lv_label_set_text(label_humidity, msg);
 }
 
 void display_show_levels(float level_0, float level_1)
