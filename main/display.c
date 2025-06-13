@@ -19,7 +19,11 @@ static void *buf2; // Will be allocated in DMA memory
 
 // LVGL UI objects
 static lv_obj_t *screen_main;
-static lv_obj_t *label_title;
+static lv_obj_t *label_datetime;
+static lv_obj_t *label_level_0;
+static lv_obj_t *label_level_1;
+static lv_obj_t *label_last_upload;
+static lv_obj_t *label_last_boot;
 static lv_obj_t *label_password;
 static lv_obj_t *label_status;
 static lv_obj_t *label_dots;
@@ -59,41 +63,68 @@ void display_create_ui(void)
     lv_obj_set_style_bg_color(screen_main, lv_color_black(), 0);
     lv_screen_load(screen_main);
 
-    // Title label
-    label_title = lv_label_create(screen_main);
-    lv_label_set_text(label_title, "LOGIN");
-    lv_obj_set_style_text_color(label_title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(label_title, &lv_font_montserrat_36, 0);
-    lv_obj_align(label_title, LV_ALIGN_TOP_MID, 0, 36);
+    // Label for date/time
+    label_datetime = lv_label_create(screen_main);
+    lv_label_set_text(label_datetime, "");
+    lv_obj_set_style_text_color(label_datetime, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_set_style_text_font(label_datetime, &lv_font_montserrat_16, 0);
+    lv_obj_align(label_datetime, LV_ALIGN_TOP_MID, 0, 5);
+
+    // Labels for levels
+    label_level_0 = lv_label_create(screen_main);
+    lv_label_set_text(label_level_0, "Tank 0");
+    lv_obj_set_style_text_color(label_level_0, lv_color_white(), 0);
+    lv_obj_set_style_text_font(label_level_0, &lv_font_montserrat_46, 0);
+    lv_obj_align(label_level_0, LV_ALIGN_TOP_MID, 0, 25);
+
+    label_level_1 = lv_label_create(screen_main);
+    lv_label_set_text(label_level_1, "Tank 1");
+    lv_obj_set_style_text_color(label_level_1, lv_color_white(), 0);
+    lv_obj_set_style_text_font(label_level_1, &lv_font_montserrat_46, 0);
+    lv_obj_align(label_level_1, LV_ALIGN_TOP_MID, 0, 65);
+
+    // Last upload info
+    label_last_upload = lv_label_create(screen_main);
+    lv_label_set_text(label_last_upload, "Last upload:\nUnknown");
+    lv_obj_set_style_text_color(label_last_upload, lv_palette_main(LV_PALETTE_TEAL), 0);
+    lv_obj_set_style_text_font(label_last_upload, &lv_font_montserrat_16, 0);
+    lv_obj_align(label_last_upload, LV_ALIGN_CENTER, 0, 10);
 
     // Password instruction label
     label_password = lv_label_create(screen_main);
     lv_label_set_text(label_password, "Enter password:");
     lv_obj_set_style_text_color(label_password, lv_color_white(), 0);
     lv_obj_set_style_text_font(label_password, &lv_font_montserrat_20, 0);
-    lv_obj_align(label_password, LV_ALIGN_CENTER, 0, -40);
+    lv_obj_align(label_password, LV_ALIGN_CENTER, 0, 40);
 
     // Password dots display
     label_dots = lv_label_create(screen_main);
     lv_label_set_text(label_dots, "____");
     lv_obj_set_style_text_color(label_dots, lv_palette_main(LV_PALETTE_YELLOW), 0);
-    lv_obj_set_style_text_font(label_dots, &lv_font_montserrat_28, 0);
-    lv_obj_align(label_dots, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_font(label_dots, &lv_font_montserrat_24, 0);
+    lv_obj_align(label_dots, LV_ALIGN_CENTER, 0, 70);
 
     // Status label
     label_status = lv_label_create(screen_main);
     lv_label_set_text(label_status, keypad_get_default_identifier());
-    lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_CYAN), 0);
-    lv_obj_set_style_text_font(label_status, &lv_font_montserrat_16, 0);
-    lv_obj_align(label_status, LV_ALIGN_CENTER, 0, 60);
+    lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
+    lv_obj_set_style_text_font(label_status, &lv_font_montserrat_24, 0);
+    lv_obj_align(label_status, LV_ALIGN_CENTER, 0, 100);
 
     // Instructions
     lv_obj_t *label_inst = lv_label_create(screen_main);
-    lv_label_set_text(label_inst, "Press # for default\nPress * to cancel");
+    lv_label_set_text(label_inst, "#: log out, *: cancel");
     lv_obj_set_style_text_color(label_inst, lv_palette_main(LV_PALETTE_GREY), 0);
-    lv_obj_set_style_text_font(label_inst, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(label_inst, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_align(label_inst, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(label_inst, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_align(label_inst, LV_ALIGN_BOTTOM_MID, 0, -15);
+
+    // Last boot info
+    label_last_boot = lv_label_create(screen_main);
+    lv_label_set_text(label_last_boot, "Last boot: unknown");
+    lv_obj_set_style_text_color(label_last_boot, lv_palette_main(LV_PALETTE_GREY), 0);
+    lv_obj_set_style_text_font(label_last_boot, &lv_font_montserrat_14, 0);
+    lv_obj_align(label_last_boot, LV_ALIGN_BOTTOM_MID, 0, 0);
 
     ESP_LOGI(TAG, "UI created successfully");
 }
@@ -123,13 +154,57 @@ void display_show_status(const char *message, lv_color_t color)
     lv_label_set_text(label_status, message);
 }
 
+void display_show_datetime(const char* datetime)
+{
+    lv_label_set_text(label_datetime, datetime);
+}
+
+void display_show_last_upload(const char* str)
+{
+    lv_label_set_text(label_last_upload, str);
+}
+void display_show_last_boot(const char* str)
+{
+    lv_label_set_text(label_last_boot, str);
+}
+
+void display_show_levels(float level_0, float level_1)
+{
+    char msg[64];
+    lv_color_t color;
+
+    if (level_0 < 0.) { color = lv_palette_main(LV_PALETTE_RED); }
+    else
+    if (level_0 < 20.) { color = lv_palette_main(LV_PALETTE_ORANGE); }
+    else
+    if (level_0 < 80.) { color = lv_palette_main(LV_PALETTE_YELLOW); }
+    else
+    if (level_0 <= 100.) { color = lv_palette_main(LV_PALETTE_GREEN); }
+    else { color = lv_palette_main(LV_PALETTE_BLUE); }
+    lv_obj_set_style_text_color(label_level_0, color, 0);
+    snprintf(msg, sizeof(msg), "%5.1f%%", level_0);
+    lv_label_set_text(label_level_0, msg);
+
+    if (level_1 < 0.) { color = lv_palette_main(LV_PALETTE_RED); }
+    else
+    if (level_1 < 20.) { color = lv_palette_main(LV_PALETTE_ORANGE); }
+    else
+    if (level_1 < 80.) { color = lv_palette_main(LV_PALETTE_YELLOW); }
+    else
+    if (level_1 <= 100.) { color = lv_palette_main(LV_PALETTE_GREEN); }
+    else { color = lv_palette_main(LV_PALETTE_BLUE); }
+    lv_obj_set_style_text_color(label_level_1, color, 0);
+    snprintf(msg, sizeof(msg), "%5.1f%%", level_1);
+    lv_label_set_text(label_level_1, msg);
+}
+
 void display_show_login_result(const char *identifier, bool success)
 {
 
     if (strcmp(identifier, keypad_get_default_identifier()) == 0)
     {
         lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_BLUE), 0); // Blue
-        lv_label_set_text(label_status, "DEFAULT ACCESS");
+        lv_label_set_text(label_status, "LOGGING OUT");
         strcpy(last_identifier, identifier);
     }
     else 
@@ -137,21 +212,19 @@ void display_show_login_result(const char *identifier, bool success)
         if (strcmp(identifier, INVALID_IDENTIFIER) == 0)
         {
             lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_RED), 0); // Red
-            lv_label_set_text(label_status, "Invalid password");
+            lv_label_set_text(label_status, "BAD PASSWD");
         }
         else
         {
             lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_GREEN), 0); // Green
-            char msg[64];
-            snprintf(msg, sizeof(msg), "Welcome, %s!", identifier);
-            lv_label_set_text(label_status, msg);
+            lv_label_set_text(label_status, "WELCOME");
             strcpy(last_identifier, identifier);
         }
     }
 
     // Reset display after 1 seconds
     vTaskDelay(pdMS_TO_TICKS(1000));
-    lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_CYAN), 0);
+    lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
     lv_label_set_text(label_status, last_identifier);
     display_update_password_dots(0);
 }

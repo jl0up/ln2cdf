@@ -41,6 +41,10 @@ void display_create_ui(void);
 // UI update functions
 void display_update_password_dots(int password_length);
 void display_show_status(const char* message, lv_color_t color);
+void display_show_datetime(const char* datetime_str);
+void display_show_last_upload(const char* str);
+void display_show_last_boot(const char* str);
+void display_show_levels(float level_0, float level_1);
 void display_show_login_result(const char* identifier, bool success);
 
 #define DISPLAY_COLOR_WHITE lv_color_white()

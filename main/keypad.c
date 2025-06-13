@@ -25,10 +25,9 @@ static const uint32_t DEBOUNCE_TIME_MS = 50;
 static const password_entry_t password_table[] = {
     {DEFAULT_PASSWORD, DEFAULT_IDENTIFIER},
     {"1234", "Admin"},
-    {"5678", "User 1"},
-    {"9999", "User 2"},
-    {"1111", "Guest"},
-    {"2580", "Service"}
+    {"5678", "User1"},
+    {"9999", "User2"},
+    {"1111", "Guest"}
 };
 // Length of the password table
 static const int password_table_size = sizeof(password_table) / sizeof(password_entry_t);

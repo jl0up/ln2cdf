@@ -47,7 +47,7 @@
 }
 
  /* Send data to Google Script */
- esp_err_t send_to_google_script(float voltage0, float voltage1, int raw_value0, int raw_value1) {
+ esp_err_t send_to_google_script(float voltage0, float voltage1, int raw_value0, int raw_value1, char* user) {
     char url[512];
     
     // Get current time for timestamp
@@ -61,8 +61,8 @@
     // Construct URL with query parameters
     // Note: URL encoding would be better but we're keeping it simple
     snprintf(url, sizeof(url), 
-        "https://script.google.com/macros/s/%s/exec?timestamp=%ju&voltage0=%.4f&voltage1=%.4f&raw_value0=%d&raw_value1=%d",
-        GOOGLE_SCRIPT_ID, now, voltage0, voltage1, raw_value0, raw_value1);
+        "https://script.google.com/macros/s/%s/exec?timestamp=%ju&voltage0=%.4f&voltage1=%.4f&raw_value0=%d&raw_value1=%d&user=%s",
+        GOOGLE_SCRIPT_ID, now, voltage0, voltage1, raw_value0, raw_value1, user);
     
     ESP_LOGI(TAG, "Sending data to Google Script: %s", url);
     

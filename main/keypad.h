@@ -36,9 +36,9 @@ typedef struct {
 } password_entry_t;
 
 // Particular identifiers in the lookup table
-#define INVALID_IDENTIFIER "User-1" // identifier returned when password not found
+#define INVALID_IDENTIFIER "INVALID" // identifier returned when password not found
 #define DEFAULT_PASSWORD "0000" // password of defaut identifier
-#define DEFAULT_IDENTIFIER "User00" // default identifier for logging out ("0000" or "#")
+#define DEFAULT_IDENTIFIER "None" // default identifier for logging out ("0000" or "#")
 
 // Global variable to track current user (initialized in keypad.c)
 extern char last_identifier[MAX_IDENTIFIER_LENGTH + 1];

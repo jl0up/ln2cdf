@@ -17,7 +17,7 @@
 #include "display.h"
 #include "keypad.h"
 
-#define WAIT_TIME_MS 10*1000/N_AVG
+#define WAIT_TIME_MS 2*1000/N_AVG
 #define UPLOAD_THRESHOLD_PERCENT 1.0
 #define R_EFF 46.0 // Ohm
 #define I_EMPTY 3.913
@@ -27,9 +27,6 @@
 const static char *TAG = "ln2cdf: main.c";
 
 int compare(const void *a, const void *b) {
-    // int *valA = (int*) a;
-    // int *valB = (int*) b;
-    // return *valA - *valB;
     if(*(int*)a > *(int*)b)
         return 1;
     else
@@ -60,7 +57,7 @@ int average_adc_raw(int* mem, int n){
 static int current_password_length = 0;
 
 // Integrated callback function that handles all keypad events
-void my_callback(const char* password, const char* message, bool success)
+void keypad_callback(const char* password, const char* message, bool success)
 {
     ESP_LOGI(TAG, "Callback triggered - password: '%s', message: '%s', success: %d", 
              password, message, success);
@@ -70,19 +67,19 @@ void my_callback(const char* password, const char* message, bool success)
         // User is entering a password digit
         current_password_length++;
         display_update_password_dots(current_password_length);
-        display_show_status("Entering password...", DISPLAY_COLOR_CYAN);
+        // display_show_status("Entering password...", DISPLAY_COLOR_CYAN);
         
     } else if (strcmp(message, "Cancelled - Ready") == 0) {
         // User pressed * to cancel
         current_password_length = 0;
         display_update_password_dots(0);
-        display_show_status("Cancelled - Ready", DISPLAY_COLOR_ORANGE);
+        // display_show_status("Cancelled - Ready", DISPLAY_COLOR_ORANGE);
         
     } else if (strcmp(message, "TIMEOUT") == 0) {
         // Password entry timed out
         current_password_length = 0;
         display_update_password_dots(0);
-        display_show_status("TIMEOUT - Try again", DISPLAY_COLOR_RED);
+        // display_show_status("TIMEOUT - Try again", DISPLAY_COLOR_RED);
         
     } else {
         // Password was completed - show login result
@@ -112,7 +109,9 @@ void app_main(void)
      *** get time via SNTP ***
      *************************/
     initialize_sntp();
-
+    time_t datetime_current;
+    time_t datetime_boot;
+    char datetime_str[64];
 
 
     // Initialize SPI and display
@@ -124,13 +123,16 @@ void app_main(void)
     // Initialize keypad
     keypad_init();
 
-    keypad_set_password_callback(my_callback);
+    keypad_set_password_callback(keypad_callback);
 
     // Create tasks
     display_start_task();
     keypad_start_tasks();
 
 
+    datetime_boot = time(NULL);
+    strftime(datetime_str, sizeof(datetime_str), "Booted %d %b %H:%M:%S", localtime(&datetime_boot) );
+    display_show_last_boot(datetime_str);
 
 
     /*************************
@@ -141,25 +143,6 @@ void app_main(void)
     float level_last_logged_0 = -100.;
     float level_last_logged_1 = -100.;
 
-    /***************************
-     *** user identification ***
-     ***************************/
-    enum Codes {
-        USER_NONE = -1,
-        USER_0 = 1234,
-        USER_1 = 5678,
-    };
-    // typedef struct {
-    //     char name[128];
-    //     enum Codes code;
-    //     time_t last_logged_in;
-    //     time_t last_logged_out;
-    //     int number_of_auto_logout;
-    //     int number_of_logins;
-    //     time_t average_login_duration;
-    //     float average_consumption;
-    //     float total_consumption;
-    // } User;
 
     /****************
      *** ADC read ***
@@ -224,6 +207,12 @@ void app_main(void)
     
             level_0 = 100 * (adc.voltage_avg[0][0] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
             level_1 = 100 * (adc.voltage_avg[0][1] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
+            
+            display_show_levels(level_0, level_1);
+
+            datetime_current = time(NULL);
+            strftime(datetime_str, sizeof(datetime_str), "%Y/%m/%d %H:%M:%S", localtime(&datetime_current) );
+            display_show_datetime(datetime_str);
 
             if (    (level_0 > level_last_logged_0 + UPLOAD_THRESHOLD_PERCENT)
                 ||  (level_0 < level_last_logged_0 - UPLOAD_THRESHOLD_PERCENT)
@@ -234,13 +223,23 @@ void app_main(void)
                 ESP_LOGI(TAG, "Level threshold reached: uploading to Google Sheet");
                 level_last_logged_0 = level_0;
                 level_last_logged_1 = level_1;                
+                // display_show_status("UPLOADING...", DISPLAY_COLOR_GREEN);
                 if (send_to_google_script(
                             adc.voltage_avg[0][0] / 1000.,
                             adc.voltage_avg[0][1] / 1000.,
                             adc.adc_raw_avg[0][0],
-                            adc.adc_raw_avg[0][1])
+                            adc.adc_raw_avg[0][1],
+                            last_identifier)
                         != ESP_OK) {
                     ESP_LOGE(TAG, "Failed to send data to Google Sheets");
+                    // display_show_status("UPLOAD FAILED", DISPLAY_COLOR_RED);
+                }
+                else {
+                    ESP_LOGI(TAG, "Data successfully sent to Google Sheets");
+                    char msg[128];
+                    // strftime(datetime_str, sizeof(datetime_str), "%d %b %H:%M:%S", localtime(&datetime) );
+                    snprintf(msg, sizeof(msg), "Last uploaded on\n%s", datetime_str);
+                    display_show_last_upload(msg);
                 }
             }
         }
