@@ -14,6 +14,8 @@
 #include "adc_oneshot.h"
 #include "sntp_client.h"
 #include "google_sheet.h"
+#include "display.h"
+#include "keypad.h"
 
 #define WAIT_TIME_MS 10*1000/N_AVG
 #define UPLOAD_THRESHOLD_PERCENT 1.0
@@ -54,6 +56,41 @@ int average_adc_raw(int* mem, int n){
     return avg / (n - k - k);
 }
 
+// Global variable to track password length for display updates
+static int current_password_length = 0;
+
+// Integrated callback function that handles all keypad events
+void my_callback(const char* password, const char* message, bool success)
+{
+    ESP_LOGI(TAG, "Callback triggered - password: '%s', message: '%s', success: %d", 
+             password, message, success);
+    
+    // Handle different callback scenarios based on the message content
+    if (strcmp(message, "Entering password...") == 0) {
+        // User is entering a password digit
+        current_password_length++;
+        display_update_password_dots(current_password_length);
+        display_show_status("Entering password...", DISPLAY_COLOR_CYAN);
+        
+    } else if (strcmp(message, "Cancelled - Ready") == 0) {
+        // User pressed * to cancel
+        current_password_length = 0;
+        display_update_password_dots(0);
+        display_show_status("Cancelled - Ready", DISPLAY_COLOR_ORANGE);
+        
+    } else if (strcmp(message, "TIMEOUT") == 0) {
+        // Password entry timed out
+        current_password_length = 0;
+        display_update_password_dots(0);
+        display_show_status("TIMEOUT - Try again", DISPLAY_COLOR_RED);
+        
+    } else {
+        // Password was completed - show login result
+        current_password_length = 0;
+        display_show_login_result(message, success);
+    }
+}
+
 
 void app_main(void)
 {
@@ -77,6 +114,25 @@ void app_main(void)
     initialize_sntp();
 
 
+
+    // Initialize SPI and display
+    display_init();
+    
+    // Create UI
+    display_create_ui();
+
+    // Initialize keypad
+    keypad_init();
+
+    keypad_set_password_callback(my_callback);
+
+    // Create tasks
+    display_start_task();
+    keypad_start_tasks();
+
+
+
+
     /*************************
      *** upload parameters ***
      *************************/
@@ -85,6 +141,25 @@ void app_main(void)
     float level_last_logged_0 = -100.;
     float level_last_logged_1 = -100.;
 
+    /***************************
+     *** user identification ***
+     ***************************/
+    enum Codes {
+        USER_NONE = -1,
+        USER_0 = 1234,
+        USER_1 = 5678,
+    };
+    // typedef struct {
+    //     char name[128];
+    //     enum Codes code;
+    //     time_t last_logged_in;
+    //     time_t last_logged_out;
+    //     int number_of_auto_logout;
+    //     int number_of_logins;
+    //     time_t average_login_duration;
+    //     float average_consumption;
+    //     float total_consumption;
+    // } User;
 
     /****************
      *** ADC read ***
