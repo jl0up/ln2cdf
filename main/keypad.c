@@ -24,9 +24,12 @@ static const uint32_t DEBOUNCE_TIME_MS = 50;
 // Password lookup table
 static const password_entry_t password_table[] = {
     {DEFAULT_PASSWORD, DEFAULT_IDENTIFIER},
-    {"1234", "Admin"},
-    {"5678", "User1"},
-    {"9999", "User2"},
+    {"1064", "Admin"},
+    {"1110", "SB"},
+    {"2022", "PQ"},
+    {"3303", "CPB"},
+    {"0444", "CSE"},
+    {"5050", "LAM"},
     {"1111", "Guest"}
 };
 // Length of the password table
