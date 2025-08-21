@@ -46,6 +46,7 @@ void display_show_last_upload(const char* str);
 void display_show_last_boot(const char* str);
 void display_show_temperature(float temperature);
 void display_show_humidity(float humdity);
+void display_show_ip(const char *ip);
 void display_show_levels(float level_0, float level_1);
 void display_show_login_result(const char* identifier, bool success);
 

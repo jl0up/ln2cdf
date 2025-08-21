@@ -17,6 +17,14 @@ static int s_retry_num = 0;
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
 
+// Global variable
+static char current_ip[16] = {0};
+
+// Getter function
+const char* get_current_ip_string(void) {
+    return strlen(current_ip) > 0 ? current_ip : NULL;
+}
+
 void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
 {
@@ -33,7 +41,8 @@ void event_handler(void* arg, esp_event_base_t event_base,
         ESP_LOGW(TAG,"connect to the AP fail");
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-        ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+        snprintf(current_ip, sizeof(current_ip), IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, "got ip: %s", current_ip);
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }

@@ -66,6 +66,8 @@
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 
+const char* get_current_ip_string(void);
+
 // static const char *TAG = "wifi_station.c";
 
 // static int s_retry_num = 0;

@@ -24,6 +24,7 @@ static lv_obj_t *label_level_0;
 static lv_obj_t *label_level_1;
 static lv_obj_t *label_temperature;
 static lv_obj_t *label_humidity;
+static lv_obj_t *label_inst;
 static lv_obj_t *label_last_upload;
 static lv_obj_t *label_last_boot;
 static lv_obj_t *label_password;
@@ -116,12 +117,12 @@ void display_create_ui(void)
     // Status label
     label_status = lv_label_create(screen_main);
     lv_label_set_text(label_status, keypad_get_default_identifier());
-    lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
+    lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_PURPLE), 0);
     lv_obj_set_style_text_font(label_status, &lv_font_montserrat_24, 0);
     lv_obj_align(label_status, LV_ALIGN_CENTER, 0, 100);
 
     // Instructions
-    lv_obj_t *label_inst = lv_label_create(screen_main);
+    label_inst = lv_label_create(screen_main);
     lv_label_set_text(label_inst, "#: log out, *: cancel");
     lv_obj_set_style_text_color(label_inst, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_set_style_text_font(label_inst, &lv_font_montserrat_14, 0);
@@ -199,6 +200,13 @@ void display_show_humidity(float humidity)
     lv_label_set_text(label_humidity, msg);
 }
 
+void display_show_ip(const char *ip)
+{
+    char msg[32];
+    snprintf(msg, sizeof(msg), "IP: %s", ip);
+    lv_label_set_text(label_inst, msg);
+}
+
 void display_show_levels(float level_0, float level_1)
 {
     char msg[64];
@@ -255,7 +263,7 @@ void display_show_login_result(const char *identifier, bool success)
 
     // Reset display after 1 seconds
     vTaskDelay(pdMS_TO_TICKS(1000));
-    lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_ORANGE), 0);
+    lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_PURPLE), 0);
     lv_label_set_text(label_status, last_identifier);
     display_update_password_dots(0);
 }
