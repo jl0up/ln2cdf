@@ -25,6 +25,11 @@
         "*.tcc": "c",
         "regex": "c",
         "esp_http_client.h": "c",
-        "string.h": "c"
+        "string.h": "c",
+        "portmacro.h": "c",
+        "esp_wifi.h": "c",
+        "esp_ota_ops.h": "c",
+        "sntp_client.h": "c",
+        "secret.h": "c"
     }
 }

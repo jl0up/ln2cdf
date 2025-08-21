@@ -18,7 +18,7 @@
 #include "keypad.h"
 #include "onewire_bus.h"
 #include "ds18b20.h"
-#include "esp_ota_ops.h"
+#include "ota_update.h"
 
 #define WAIT_TIME_MS 2*1000/N_AVG
 #define UPLOAD_THRESHOLD_PERCENT 1.0
@@ -28,40 +28,6 @@
 #define ERR_BUF_SIZE 512
 
 const static char *TAG = "ln2cdf: main.c";
-
-
-
-
-void backtofactory()
-{
-    esp_partition_iterator_t  pi ;                                  // Iterator for find
-    const esp_partition_t*    factory ;                             // Factory partition
-    esp_err_t                 err ;
-
-    pi = esp_partition_find ( ESP_PARTITION_TYPE_APP,               // Get partition iterator for
-                              ESP_PARTITION_SUBTYPE_APP_FACTORY,    // factory partition
-                              "factory" ) ;
-    if ( pi == NULL )                                               // Check result
-    {
-        ESP_LOGE ( TAG, "Failed to find factory partition" ) ;
-    }
-    else
-    {
-        factory = esp_partition_get ( pi ) ;                        // Get partition struct
-        esp_partition_iterator_release ( pi ) ;                     // Release the iterator
-        err = esp_ota_set_boot_partition ( factory ) ;              // Set partition for boot
-        if ( err != ESP_OK )                                        // Check error
-        {
-                ESP_LOGE ( TAG, "Failed to set boot partition" ) ;
-        }
-        else
-        {
-                // esp_restart() ;                                         // Restart ESP
-        }
-    }
-}
-
-
 
 
 int compare(const void *a, const void *b) {
@@ -137,11 +103,6 @@ void app_main(void)
     print_chip_information();
 
 
-    /*******************************************
-     *** Going back to factory app next boot ***
-     ******************************************/
-    backtofactory();
-
     /********************
      *** Wifi connect ***
      ********************/
@@ -157,8 +118,10 @@ void app_main(void)
     time_t datetime_boot;
     char datetime_boot_str[64];
 
-
-
+    /**************************************
+     *** Enable OTA update by http POST ***
+     **************************************/
+    start_ota_server();
 
 
     #define EXAMPLE_ONEWIRE_BUS_GPIO    23
@@ -304,6 +267,8 @@ void app_main(void)
             level_1 = 100 * (adc.voltage_avg[0][1] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
             
             display_show_levels(level_0, level_1);
+
+            display_show_ip(get_current_ip_string());
 
             datetime_current = time(NULL);
             strftime(datetime_str, sizeof(datetime_str), "%Y/%m/%d %H:%M:%S", localtime(&datetime_current) );

@@ -17,6 +17,7 @@ Uses Espressif ESP-IDF framwork, not Arduino. Arduino libraries may be added lat
 
 - [x] Connect to wifi hotspot
     - [x] SSID/password is stored in `secret.h` (template `secret_template.h` in repo)
+    - [x] IP is displayed on screen
     - [ ] multi-Wifi
     - [ ] Wifi simple connect (DPP-connect), preferably using QRcode on a display rather than on serial terminal
     - [ ] Web Wifi manager
@@ -50,3 +51,4 @@ Uses Espressif ESP-IDF framwork, not Arduino. Arduino libraries may be added lat
 - [ ] Easy firmware update
     - [ ] OTA (over the air) with automatic pull from Github branch on boot
     - [ ] idem but pull update by pressing a button
+    - [x] OTA update by pushing firmware to IP (`curl -X POST -H "Content-Type: application/octet-stream" --data-binary "@ln2cdf.bin" http://192.168.120.91/ota`) (see IP on screen)
