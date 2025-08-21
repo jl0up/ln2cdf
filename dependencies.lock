@@ -1,17 +1,41 @@
 dependencies:
+  espressif/ds18b20:
+    component_hash: 87a753636db56dbb42633b8fdd615c63c5e752ec9c9629e6386d8115f36efc30
+    dependencies:
+    - name: espressif/onewire_bus
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.0.0
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.1.2
+  espressif/onewire_bus:
+    component_hash: 11729fd9a5de80225177a61e9cd77de91683b8ec300e83710d5327b666dbe884
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.0.4
   idf:
     source:
       type: idf
     version: 5.4.1
-  lvgl:
+  lvgl/lvgl:
+    component_hash: 096c69af22eaf8a2b721e3913da91918c5e6bf1a762a113ec01f401aa61337a0
     dependencies: []
     source:
-      path: C:\Portable\esp\frameworks\v5.4.1\esp-idf\components\lvgl
-      type: local
+      registry_url: https://components.espressif.com/
+      type: service
     version: 9.2.2
 direct_dependencies:
+- espressif/ds18b20
+- espressif/onewire_bus
 - idf
 - lvgl/lvgl
-manifest_hash: 02cb8b52ded940f05a38c28f7ec4fcbbe4ffb7727f8a8153323dcadd6884e609
+manifest_hash: fcfe04bd241bec62270c3042bb61ad20d9a9eef127b51edf59768845343b3d4d
 target: esp32c6
 version: 2.0.0
