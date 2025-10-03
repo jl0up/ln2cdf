@@ -5,7 +5,7 @@
     "idf.openOcdConfigs": [
         "board/esp32c6-builtin.cfg"
     ],
-    "idf.portWin": "COM14",
+    "idf.portWin": "COM16",
     "idf.toolsPathWin": "C:\\Portable\\esp\\tools",
     "idf.flashType": "UART",
     "idf.customExtraVars": {
