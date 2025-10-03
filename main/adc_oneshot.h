@@ -9,7 +9,7 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#define N_AVG 15
+#define N_AVG 5
 
 /*---------------------------------------------------------------
         ADC General Macros
@@ -19,8 +19,8 @@
 #define EXAMPLE_ADC1_CHAN0          ADC_CHANNEL_4
 #define EXAMPLE_ADC1_CHAN1          ADC_CHANNEL_5
 #else
-#define EXAMPLE_ADC1_CHAN0          ADC_CHANNEL_0
-#define EXAMPLE_ADC1_CHAN1          ADC_CHANNEL_1
+#define EXAMPLE_ADC1_CHAN0          ADC_CHANNEL_4
+#define EXAMPLE_ADC1_CHAN1          ADC_CHANNEL_5
 #endif
 
 #if (SOC_ADC_PERIPH_NUM >= 2) && !CONFIG_IDF_TARGET_ESP32C3

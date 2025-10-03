@@ -15,13 +15,13 @@
 #define PASSWORD_TIMEOUT_MS 1000
 
 // GPIO pin definitions for ESP32-C6 - Keypad
-#define ROW_1_GPIO    GPIO_NUM_10
-#define ROW_2_GPIO    GPIO_NUM_11
-#define ROW_3_GPIO    GPIO_NUM_12
-#define ROW_4_GPIO    GPIO_NUM_13
+#define ROW_1_GPIO    GPIO_NUM_15
+#define ROW_2_GPIO    GPIO_NUM_23
+#define ROW_3_GPIO    GPIO_NUM_22
+#define ROW_4_GPIO    GPIO_NUM_21
 #define COL_1_GPIO    GPIO_NUM_20
-#define COL_2_GPIO    GPIO_NUM_21
-#define COL_3_GPIO    GPIO_NUM_22
+#define COL_2_GPIO    GPIO_NUM_19
+#define COL_3_GPIO    GPIO_NUM_18
 
 // Key event structure
 typedef struct {

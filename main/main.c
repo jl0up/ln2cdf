@@ -22,9 +22,9 @@
 
 #define WAIT_TIME_MS 2*1000/N_AVG
 #define UPLOAD_THRESHOLD_PERCENT 1.0
-#define R_EFF 46.0 // Ohm
-#define I_EMPTY 3.913
-#define I_FULL 20.131
+#define R_EFF 46.5 // Ohm
+#define I_EMPTY 4//3.913
+#define I_FULL 20//20.131
 #define ERR_BUF_SIZE 512
 
 const static char *TAG = "ln2cdf: main.c";
@@ -124,7 +124,7 @@ void app_main(void)
     start_ota_server();
 
 
-    #define EXAMPLE_ONEWIRE_BUS_GPIO    23
+    #define EXAMPLE_ONEWIRE_BUS_GPIO    6
     #define EXAMPLE_ONEWIRE_MAX_DS18B20 3
 
     // install 1-wire bus

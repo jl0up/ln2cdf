@@ -6,12 +6,12 @@
 #include "lvgl.h"
 
 // GPIO pin definitions for ESP32-C6 - Display ST7789
-#define LCD_SCLK_GPIO       6    // SCLK (Serial Clock)
-#define LCD_MOSI_GPIO       7    // MOSI (Master Out Slave In)
+#define LCD_SCLK_GPIO       11    // SCLK (Serial Clock)
+#define LCD_MOSI_GPIO       10    // MOSI (Master Out Slave In)
 #define LCD_RST_GPIO        8   // Reset pin
-#define LCD_DC_GPIO         9   // Data/Command pin
-#define LCD_BL_GPIO         15   // Backlight pin
-#define LCD_CS_GPIO         18   // CS (Chip Select)
+#define LCD_DC_GPIO         1   // Data/Command pin
+#define LCD_BL_GPIO         7   // Backlight pin
+#define LCD_CS_GPIO         0   // CS (Chip Select)
 
 // Display configuration
 #define LCD_WIDTH           170
