@@ -8,4 +8,4 @@
 
 
  /* Send data to Google Script */
- esp_err_t send_to_google_script(float voltage0, float voltage1, int raw_value0, int raw_value1, char* user);
+ esp_err_t send_to_google_script(float voltage0, float voltage1, int raw_value0, int raw_value1, char* user, float temperature, float humidity);

@@ -333,7 +333,10 @@ void app_main(void)
                             adc.voltage_avg[0][1] / 1000.,
                             adc.adc_raw_avg[0][0],
                             adc.adc_raw_avg[0][1],
-                            last_identifier)
+                            last_identifier,
+                            temperature,
+                            humidity
+                        )
                         != ESP_OK) {
                     ESP_LOGE(TAG, "Failed to send data to Google Sheets");
                     // display_show_status("UPLOAD FAILED", DISPLAY_COLOR_RED);
