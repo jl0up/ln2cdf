@@ -18,3 +18,4 @@ dependencies:
   espressif/onewire_bus: ^1.0.3
   lvgl/lvgl: 9.2.2
   espressif/aht20: ^2.0.0
+  esp-idf-lib/ads111x: ^1.1.14

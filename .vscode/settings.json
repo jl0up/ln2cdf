@@ -30,6 +30,7 @@
         "esp_wifi.h": "c",
         "esp_ota_ops.h": "c",
         "sntp_client.h": "c",
-        "secret.h": "c"
+        "secret.h": "c",
+        "adc_cali.h": "c"
     }
 }
