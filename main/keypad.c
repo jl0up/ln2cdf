@@ -30,10 +30,10 @@ static const password_entry_t password_table[] = {
     {"3303", "CPB"},
     {"0444", "CSE"},
     {"5050", "LAM"},
-    {"0606", "USR1"},
-    {"7007", "USR2"},    
-    {"8800", "USR3"},    
-    {"0990", "USR4"},    
+    {"0606", "UAR1"},
+    {"7007", "UAR2"},    
+    {"8800", "A&B"},    
+    {"0990", "LKB"},    
     {"1111", "Guest"}
 };
 // Length of the password table

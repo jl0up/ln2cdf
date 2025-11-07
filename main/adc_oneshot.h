@@ -9,7 +9,7 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#define N_AVG 10  //number of ADC samples to average
+#define N_AVG 19  //number of ADC samples to average MAX 19 because of memory limits
 
 /*---------------------------------------------------------------
         ADC General Macros
