@@ -16,8 +16,8 @@
 #include "google_sheet.h"
 #include "display.h"
 #include "keypad.h"
-#include "onewire_bus.h"
-#include "ds18b20.h"
+// #include "onewire_bus.h"
+// #include "ds18b20.h"
 #include "ota_update.h"
 #include "temp_humidity.h"
 
