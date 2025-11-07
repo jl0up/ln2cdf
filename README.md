@@ -16,8 +16,6 @@ Uses Espressif ESP-IDF framwork, not Arduino. Arduino libraries may be added lat
 ```
   idf:
     version: '>=4.1.0'
-  espressif/ds18b20: ^0.1.2
-  espressif/onewire_bus: ^1.0.3
   lvgl/lvgl: 9.2.2
   espressif/aht20: ^2.0.0
 ```
@@ -37,10 +35,11 @@ Uses Espressif ESP-IDF framwork, not Arduino. Arduino libraries may be added lat
 - [x] Synchronise time with NTP server
 - [x] Read two capacitive level gauges (4-20 mA current loop)
     - [x] using internal ADC for the moment
-    - [ ] external ADC modules may be used if more accuracy is needed
+    - [ ] external, floating ADC modules may be used if more accuracy is needed (doesn't seem so) or if having a common ground for both sensors is a problem (doesn't seem to be the case)
 - [x] Automatically fill-up a Google Sheet for logging level
     - [ ] periodic sampling (every 15 min ?)
-    - [x] threshold based (each time level is down by 2% ?)
+    - [x] threshold based (each time level is down by 1.1% for tank 1, 0.5% for tank 2 because first sensor is noisier)
+    - [x] upon user change
 - [ ] Automatically send email when level goes below 30%
     - [ ] via Google Sheet
     - [ ] or in the ESP32 ?
@@ -74,18 +73,20 @@ Uses Espressif ESP-IDF framwork, not Arduino. Arduino libraries may be added lat
 #define DEFAULT_PASSWORD "0000" // password of defaut identifier
 #define DEFAULT_IDENTIFIER "None" // default identifier for logging out ("0000" or "#")
 
-{DEFAULT_PASSWORD, DEFAULT_IDENTIFIER},
-{"1064", "Admin"},
-{"1110", "SB"},
-{"2022", "PQ"},
-{"3303", "CPB"},
-{"0444", "CSE"},
-{"5050", "LAM"},
-{"0606", "USR1"},
-{"7007", "USR2"},    
-{"8800", "USR3"},    
-{"0990", "USR4"},    
-{"1111", "Guest"}
+static const password_entry_t password_table[] = {
+    {DEFAULT_PASSWORD, DEFAULT_IDENTIFIER},
+    {"1064", "Admin"},
+    {"1110", "SB"},
+    {"2022", "PQ"},
+    {"3303", "CPB"},
+    {"0444", "CSE"},
+    {"5050", "LAM"},
+    {"0606", "UAR1"},
+    {"7007", "UAR2"},    
+    {"8800", "A&B"},    
+    {"0990", "LKB"},    
+    {"1111", "Guest"}
+};
 ```
 - `#` button logs out (returns to default identifier "None")
 - `*` cancels current password typing (or wait a few seconds before retrying)
@@ -109,6 +110,7 @@ Uses Espressif ESP-IDF framwork, not Arduino. Arduino libraries may be added lat
 - owned by salle.blanche.cdf google account
 - address: `https://docs.google.com/spreadsheets/d/1Qrxl4_TUl-HDLBYXdbTznASOz_5FRtc-cUEeFFwspNo/edit?usp=sharing`
 - tab `LN2 logs` contains useful logs
+- tab  `Plots` contains the corresponding plots 
 - tab `rawdata` contains data uploaded by the microcontroler
 - tab `params` contains some parameters used to convert ADC voltage to sensor current then percentage values
 
