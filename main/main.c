@@ -23,10 +23,11 @@
 
 
 #define WAIT_TIME_MS 2*1000/N_AVG
-#define UPLOAD_THRESHOLD_PERCENT 1.0
+#define UPLOAD_THRESHOLD_PERCENT_0 2.0 // minimum percentage change on tank 0 to trigger upload unless identifier changed
+#define UPLOAD_THRESHOLD_PERCENT_1 0.5 // minimum percentage change an tank 1 to trigger upload unless identifier changed
 #define R_EFF 46.5 // Ohm
-#define I_EMPTY 4//3.913
-#define I_FULL 20//20.131
+#define I_EMPTY 4 //3.913
+#define I_FULL 20 //20.131
 #define ERR_BUF_SIZE 512
 
 const static char *TAG = "ln2cdf: main.c";
@@ -61,6 +62,9 @@ int average_adc_raw(int* mem, int n){
 
 // Global variable to track password length for display updates
 static int current_password_length = 0;
+
+// Global variable to track last successfully uploaded identifier
+static const char* last_identifier_uploaded = NULL;
 
 // Integrated callback function that handles all keypad events
 void keypad_callback(const char* password, const char* message, bool success)
@@ -318,10 +322,13 @@ void app_main(void)
 
 
 
-            if (    (level_0 > level_last_logged_0 + UPLOAD_THRESHOLD_PERCENT)
-                ||  (level_0 < level_last_logged_0 - UPLOAD_THRESHOLD_PERCENT)
-                ||  (level_1 > level_last_logged_1 + UPLOAD_THRESHOLD_PERCENT)
-                ||  (level_1 < level_last_logged_1 - UPLOAD_THRESHOLD_PERCENT) ) {
+            if (    (level_0 > level_last_logged_0 + UPLOAD_THRESHOLD_PERCENT_0)
+                ||  (level_0 < level_last_logged_0 - UPLOAD_THRESHOLD_PERCENT_0)
+                ||  (level_1 > level_last_logged_1 + UPLOAD_THRESHOLD_PERCENT_1)
+                ||  (level_1 < level_last_logged_1 - UPLOAD_THRESHOLD_PERCENT_1)
+                ||  (last_identifier_uploaded == NULL)
+                ||  (strcmp(last_identifier_uploaded, last_identifier) != 0)
+                ) {
                 
                 // Send to Google Sheets via Google Apps Script
                 ESP_LOGI(TAG, "Level threshold reached: uploading to Google Sheet");
@@ -340,6 +347,7 @@ void app_main(void)
                         != ESP_OK) {
                     ESP_LOGE(TAG, "Failed to send data to Google Sheets");
                     // display_show_status("UPLOAD FAILED", DISPLAY_COLOR_RED);
+                    last_identifier_uploaded = NULL;
                 }
                 else {
                     ESP_LOGI(TAG, "Data successfully sent to Google Sheets");
@@ -348,6 +356,7 @@ void app_main(void)
                     strftime(datetime_str, sizeof(datetime_str), "Upload %d %b %H:%M:%S", localtime(&datetime_current) );
                     // snprintf(msg, sizeof(msg), "Uploaded: %s", datetime_str);
                     display_show_last_upload(datetime_str);
+                    last_identifier_uploaded = last_identifier;
                 }
             }
         }
