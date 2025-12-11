@@ -11,7 +11,7 @@
 #define ROWS 4
 #define COLS 3
 #define MAX_PASSWORD_LENGTH 4
-#define MAX_IDENTIFIER_LENGTH 32
+#define MAX_IDENTIFIER_LENGTH 10
 #define PASSWORD_TIMEOUT_MS 1000
 
 // GPIO pin definitions for ESP32-C6 - Keypad

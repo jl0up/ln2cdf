@@ -22,13 +22,16 @@
 #include "temp_humidity.h"
 
 
-#define WAIT_TIME_MS 5*1000/N_AVG
-#define UPLOAD_THRESHOLD_PERCENT_0 1.1 // minimum percentage change on tank 0 to trigger upload unless identifier changed
+#define WAIT_TIME_MS 7*1000/N_AVG
+#define UPLOAD_THRESHOLD_PERCENT_0 1.0 // minimum percentage change on tank 0 to trigger upload unless identifier changed
 #define UPLOAD_THRESHOLD_PERCENT_1 0.5 // minimum percentage change an tank 1 to trigger upload unless identifier changed
+#define MAX_UPLOAD_INTERVAL_SECONDS 1*60 // 1*60*60 // maximum interval between uploads in seconds
+#define MIN_UPLOAD_INTERVAL_SECONDS    1*60 // minimum interval between uploads in seconds
+#define DELAY_BEFORE_LOGOUT_SECONDS 10 // 2*60*60 // seconds to wait before logging out
 #define R_EFF 46.5 // Ohm
 #define I_EMPTY 4 //3.913
 #define I_FULL 20 //20.131
-#define ERR_BUF_SIZE 256
+// #define ERR_BUF_SIZE 256
 
 const static char *TAG = "ln2cdf: main.c";
 
@@ -64,7 +67,10 @@ int average_adc_raw(int* mem, int n){
 static int current_password_length = 0;
 
 // Global variable to track last successfully uploaded identifier
-static char last_identifier_uploaded[MAX_IDENTIFIER_LENGTH + 1] = "";
+static char last_identifier_uploaded[MAX_IDENTIFIER_LENGTH + 1] = DEFAULT_IDENTIFIER;
+
+// Global variable to track last login time
+time_t datetime_last_login;
 
 // Integrated callback function that handles all keypad events
 void keypad_callback(const char* password, const char* message, bool success)
@@ -95,13 +101,16 @@ void keypad_callback(const char* password, const char* message, bool success)
         // Password was completed - show login result
         current_password_length = 0;
         display_show_login_result(message, success);
+        if (strcmp(message, DEFAULT_IDENTIFIER) != 0) {
+            datetime_last_login = time(NULL);
+        }
     }
 }
 
 
 void app_main(void)
 {
-    char err_buf[ERR_BUF_SIZE] = "";
+    // char err_buf[ERR_BUF_SIZE] = "";
 
     /*****************
      *** Chip info ***
@@ -119,6 +128,7 @@ void app_main(void)
      *** get time via SNTP ***
      *************************/
     initialize_sntp();
+    time_t datetime_last_upload;
     time_t datetime_current;
     char datetime_str[64];
     time_t datetime_boot;
@@ -218,9 +228,6 @@ void app_main(void)
     keypad_start_tasks();
 
 
-    datetime_boot = time(NULL);
-    strftime(datetime_boot_str, sizeof(datetime_boot_str), "Booted %d %b %H:%M:%S", localtime(&datetime_boot) );
-    display_show_last_boot(datetime_boot_str);
 
 
     /*************************
@@ -238,16 +245,27 @@ void app_main(void)
     // initialise ADC (setup + memory)
     // ADC 0 is GPIO0, ADC1 is GPIO1 (on ESP32-C6)
     adc_t adc;
+
     adc_oneshot_unit_init_cfg_t init_config1 = {
         .unit_id = ADC_UNIT_1,
     };
     adc.init_config1 = init_config1;
+
+    #if EXAMPLE_USE_ADC2
     adc_oneshot_unit_init_cfg_t init_config2 = {
         .unit_id = ADC_UNIT_2,
     };
     adc.init_config2 = init_config2;
+    #endif  //#if EXAMPLE_USE_ADC2
+
     adc_oneshot_init(&adc);
 
+    // Show last boot time
+    datetime_boot = time(NULL);
+    strftime(datetime_boot_str, sizeof(datetime_boot_str), "Booted %d %b %H:%M:%S", localtime(&datetime_boot) );
+    display_show_last_boot(datetime_boot_str);
+    datetime_last_upload = datetime_boot - MAX_UPLOAD_INTERVAL_SECONDS; // force upload on first cycle
+    datetime_last_login = datetime_boot;  // initialize last login time
 
     // Reading ADC in loop
     unsigned int idx = 0;
@@ -256,41 +274,42 @@ void app_main(void)
 
         adc_oneshot_get(&adc);
 
-        *err_buf = '\0';
-        for(int j=0;j<1;j++){
-            for(int i=0;i<2;i++){
+        // *err_buf = '\0';
+        for(int j=0;j<N_ADC_UNITS;j++){
+            for(int i=0;i<N_ADC_CHANNELS;i++){
                 // add sample to circular memory
-                snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "ADC%d.%d: ", j+1, i);
-                snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "%4d", adc.adc_raw[j][i]);
                 adc.adc_raw_mem[j][i][idx%N_AVG] = adc.adc_raw[j][i];
-                snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%4d mV)", adc.voltage[j][i]);
                 adc.voltage_mem[j][i][idx%N_AVG] = adc.voltage[j][i];
-                snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " | ");
+                // removed detailed logs to prevent memory problems
+                // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "ADC%d.%d: ", j+1, i);
+                // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "%4d", adc.adc_raw[j][i]);
+                // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%4d mV)", adc.voltage[j][i]);
+                // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " | ");
             }
         }
-        ESP_LOGI(TAG, "%s", err_buf);
+        // ESP_LOGI(TAG, "%s", err_buf);
 
         if (idx%N_AVG == 0){
             ESP_LOGD(TAG, "AVERAGING: idx=%d\tidxMODN_AVG=%d\tN_AVG/2=%d\n", idx, idx%N_AVG, N_AVG/2);
             
-            *err_buf = '\0';
-            for(int j=0;j<1;j++){
-                for(int i=0;i<2;i++){
+            // *err_buf = '\0';
+            for(int j=0;j<N_ADC_UNITS;j++){
+                for(int i=0;i<N_ADC_CHANNELS;i++){
                     // apply a median filter
                     qsort(adc.adc_raw_mem[j][i], N_AVG, sizeof(int), compare);
-                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "ADC%d.%d: ", j+1, i);
-                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "median=%4d", adc.adc_raw_mem[j][i][N_AVG/2]);
                     qsort(adc.voltage_mem[j][i], N_AVG, sizeof(int), compare);
-                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%4d mV)", adc.voltage_mem[j][i][N_AVG/2]);
+                    // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "ADC%d.%d: ", j+1, i);
+                    // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "median=%4d", adc.adc_raw_mem[j][i][N_AVG/2]);
+                    // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%4d mV)", adc.voltage_mem[j][i][N_AVG/2]);
                     // calculate average excluding median-filtered outliers
                     adc.adc_raw_avg[j][i] = average_adc_raw(adc.adc_raw_mem[j][i], N_AVG);
-                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, ", avg=%6.1f", adc.adc_raw_avg[j][i]);
                     adc.voltage_avg[j][i] = average_voltage(adc.voltage_mem[j][i], N_AVG);
-                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%6.1f mV)", adc.voltage_avg[j][i]);
-                    snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " | ");
+                    // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, ", avg=%6.1f", adc.adc_raw_avg[j][i]);
+                    // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%6.1f mV)", adc.voltage_avg[j][i]);
+                    // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " | ");
                 }
             }
-            ESP_LOGI(TAG, "%s", err_buf);
+            // ESP_LOGI(TAG, "%s", err_buf);
 
     
             level_0 = 100 * (adc.voltage_avg[0][0] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
@@ -304,7 +323,11 @@ void app_main(void)
             strftime(datetime_str, sizeof(datetime_str), "%Y/%m/%d %H:%M:%S", localtime(&datetime_current) );
             display_show_datetime(datetime_str);
 
-
+            // 
+            if (difftime(datetime_current, datetime_last_login) > DELAY_BEFORE_LOGOUT_SECONDS) {
+                // strcpy(last_identifier, DEFAULT_IDENTIFIER);
+                keypad_callback(DEFAULT_PASSWORD, DEFAULT_IDENTIFIER, false);
+            }
 
             // Read temperature from DS18B20 sensors
             // for (int i = 0; i < ds18b20_device_num; i ++) {
@@ -322,12 +345,14 @@ void app_main(void)
 
 
 
-            if (    (level_0 > level_last_logged_0 + UPLOAD_THRESHOLD_PERCENT_0)
-                ||  (level_0 < level_last_logged_0 - UPLOAD_THRESHOLD_PERCENT_0)
-                ||  (level_1 > level_last_logged_1 + UPLOAD_THRESHOLD_PERCENT_1)
-                ||  (level_1 < level_last_logged_1 - UPLOAD_THRESHOLD_PERCENT_1)
+            if (    ( (difftime(datetime_current, datetime_last_upload) > MIN_UPLOAD_INTERVAL_SECONDS) && 
+                      ( (level_0 > level_last_logged_0 + UPLOAD_THRESHOLD_PERCENT_0) ||  
+                        (level_0 < level_last_logged_0 - UPLOAD_THRESHOLD_PERCENT_0) ||  
+                        (level_1 > level_last_logged_1 + UPLOAD_THRESHOLD_PERCENT_1) ||  
+                        (level_1 < level_last_logged_1 - UPLOAD_THRESHOLD_PERCENT_1) ) )
                 ||  (strcmp(last_identifier_uploaded, "") == 0)
                 ||  (strcmp(last_identifier_uploaded, last_identifier) != 0)
+                ||  (difftime(datetime_current, datetime_last_upload) > MAX_UPLOAD_INTERVAL_SECONDS)
                 ) {
                 
                 // Send to Google Sheets via Google Apps Script
@@ -357,6 +382,7 @@ void app_main(void)
                     // snprintf(msg, sizeof(msg), "Uploaded: %s", datetime_str);
                     display_show_last_upload(datetime_str);
                     strncpy(last_identifier_uploaded, last_identifier, sizeof(last_identifier_uploaded));
+                    datetime_last_upload = datetime_current;
                 }
             }
         }

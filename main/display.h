@@ -16,7 +16,7 @@
 // Display configuration
 #define LCD_WIDTH           170
 #define LCD_HEIGHT          320
-#define LCD_SPI_CLOCK_HZ    (20 * 1000 * 1000)  // 20MHz
+#define LCD_SPI_CLOCK_HZ    (10 * 1000 * 1000)  // 10MHz
 
 // ST7789 controller frame buffer size
 #define ST7789_WIDTH        240

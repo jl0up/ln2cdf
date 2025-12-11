@@ -9,7 +9,9 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#define N_AVG 19  //number of ADC samples to average MAX 19 because of memory limits
+#define N_AVG 37  //number of ADC samples to average MAX 19 because of memory limits
+#define N_ADC_UNITS 1
+#define N_ADC_CHANNELS 2
 
 /*---------------------------------------------------------------
         ADC General Macros
@@ -57,12 +59,12 @@ typedef struct {
     bool do_calibration1_chan0;
     bool do_calibration1_chan1;
     bool do_calibration2;
-    int adc_raw[2][10];
-    int voltage[2][10];
-    int adc_raw_mem[2][10][N_AVG];
-    int voltage_mem[2][10][N_AVG];
-    float adc_raw_avg[2][10];
-    float voltage_avg[2][10];
+    int adc_raw[N_ADC_UNITS][N_ADC_CHANNELS];
+    int voltage[N_ADC_UNITS][N_ADC_CHANNELS];
+    int adc_raw_mem[N_ADC_UNITS][N_ADC_CHANNELS][N_AVG];
+    int voltage_mem[N_ADC_UNITS][N_ADC_CHANNELS][N_AVG];
+    float adc_raw_avg[N_ADC_UNITS][N_ADC_CHANNELS];
+    float voltage_avg[N_ADC_UNITS][N_ADC_CHANNELS];
 } adc_t;
 
 void adc_oneshot_init(adc_t *adc);

@@ -292,7 +292,7 @@ static void handle_shortcut_key(void)
     xTimerStop(password_timer, 0);
     
     // Process default password
-    process_password("0000");
+    process_password(DEFAULT_PASSWORD);
     
     // Reset password state
     memset(current_password, 0, sizeof(current_password));
