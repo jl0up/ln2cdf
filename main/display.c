@@ -9,6 +9,9 @@
 
 static const char *TAG = "DISPLAY";
 
+// Mutex for LVGL thread safety
+static SemaphoreHandle_t lvgl_mutex = NULL;
+
 // SPI device handle
 static spi_device_handle_t spi_device;
 
@@ -46,6 +49,9 @@ void display_init(void)
 {
     // Initialize SPI and display hardware
     init_spi_display();
+
+    // Create mutex for LVGL
+    lvgl_mutex = xSemaphoreCreateMutex();
 
     // Initialize LVGL
     init_lvgl();
@@ -148,93 +154,127 @@ void display_create_ui(void)
 
 void display_update_password_dots(int password_length)
 {
-    char dots[MAX_PASSWORD_LENGTH + 1] = {0};
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        char dots[MAX_PASSWORD_LENGTH + 1] = {0};
+        for (int i = 0; i < MAX_PASSWORD_LENGTH; i++)
+        {
+            if (i < password_length)
+            {
+                dots[i] = '*';
+            }
+            else
+            {
+                dots[i] = '_';
+            }
+        }
+        lv_label_set_text(label_dots, dots);
 
-    for (int i = 0; i < MAX_PASSWORD_LENGTH; i++)
-    {
-        if (i < password_length)
-        {
-            dots[i] = '*';
-        }
-        else
-        {
-            dots[i] = '_';
-        }
+        xSemaphoreGive(lvgl_mutex);
     }
-
-    lv_label_set_text(label_dots, dots);
 }
 
 void display_show_status(const char *message, lv_color_t color)
 {
-    lv_obj_set_style_text_color(label_status, color, 0);
-    lv_label_set_text(label_status, message);
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        lv_obj_set_style_text_color(label_status, color, 0);
+        lv_label_set_text(label_status, message);
+        
+        xSemaphoreGive(lvgl_mutex);
+    }
 }
 
 void display_show_datetime(const char* datetime)
 {
-    lv_label_set_text(label_datetime, datetime);
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        lv_label_set_text(label_datetime, datetime);
+        
+        xSemaphoreGive(lvgl_mutex);
+    }
 }
 
 void display_show_last_upload(const char* str)
 {
-    lv_label_set_text(label_last_upload, str);
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        lv_label_set_text(label_last_upload, str);
+        
+        xSemaphoreGive(lvgl_mutex);
+    }
 }
 
 void display_show_last_boot(const char* str)
 {
-    lv_label_set_text(label_last_boot, str);
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        lv_label_set_text(label_last_boot, str);
+        
+        xSemaphoreGive(lvgl_mutex);
+    }
 }
 
 void display_show_temperature(float temperature)
 {
-    char msg[64];
-    snprintf(msg, sizeof(msg), "%.1f°C", temperature);
-    lv_label_set_text(label_temperature, msg);
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "%.1f°C", temperature);
+        lv_label_set_text(label_temperature, msg);
+        
+        xSemaphoreGive(lvgl_mutex);
+    }
 }
 
 void display_show_humidity(float humidity)
 {
-    char msg[64];
-    snprintf(msg, sizeof(msg), "%.1f%%", humidity);
-    lv_label_set_text(label_humidity, msg);
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "%.1f%%", humidity);
+        lv_label_set_text(label_humidity, msg);
+        
+        xSemaphoreGive(lvgl_mutex);
+    }
 }
 
 void display_show_ip(const char *ip)
 {
-    char msg[32];
-    snprintf(msg, sizeof(msg), "IP: %s", ip);
-    lv_label_set_text(label_inst, msg);
+        if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        char msg[32];
+        snprintf(msg, sizeof(msg), "IP: %s", ip);
+        lv_label_set_text(label_inst, msg);
+
+        xSemaphoreGive(lvgl_mutex);
+    }
 }
 
 void display_show_levels(float level_0, float level_1)
 {
-    char msg[64];
-    lv_color_t color;
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        char msg[64];
+        lv_color_t color;
 
-    if (level_0 < 0.) { color = lv_palette_main(LV_PALETTE_RED); }
-    else
-    if (level_0 < 20.) { color = lv_palette_main(LV_PALETTE_ORANGE); }
-    else
-    if (level_0 < 80.) { color = lv_palette_main(LV_PALETTE_YELLOW); }
-    else
-    if (level_0 <= 100.) { color = lv_palette_main(LV_PALETTE_GREEN); }
-    else { color = lv_palette_main(LV_PALETTE_BLUE); }
-    lv_obj_set_style_text_color(label_level_0, color, 0);
-    snprintf(msg, sizeof(msg), "%5.1f%%", level_0);
-    lv_label_set_text(label_level_0, msg);
+        if (level_0 < 0.) { color = lv_palette_main(LV_PALETTE_RED); }
+        else
+        if (level_0 < 20.) { color = lv_palette_main(LV_PALETTE_ORANGE); }
+        else
+        if (level_0 < 80.) { color = lv_palette_main(LV_PALETTE_YELLOW); }
+        else
+        if (level_0 <= 100.) { color = lv_palette_main(LV_PALETTE_GREEN); }
+        else { color = lv_palette_main(LV_PALETTE_BLUE); }
+        lv_obj_set_style_text_color(label_level_0, color, 0);
+        snprintf(msg, sizeof(msg), "%5.1f%%", level_0);
+        lv_label_set_text(label_level_0, msg);
 
-    if (level_1 < 0.) { color = lv_palette_main(LV_PALETTE_RED); }
-    else
-    if (level_1 < 20.) { color = lv_palette_main(LV_PALETTE_ORANGE); }
-    else
-    if (level_1 < 80.) { color = lv_palette_main(LV_PALETTE_YELLOW); }
-    else
-    if (level_1 <= 100.) { color = lv_palette_main(LV_PALETTE_GREEN); }
-    else { color = lv_palette_main(LV_PALETTE_BLUE); }
-    lv_obj_set_style_text_color(label_level_1, color, 0);
-    snprintf(msg, sizeof(msg), "%5.1f%%", level_1);
-    lv_label_set_text(label_level_1, msg);
+        if (level_1 < 0.) { color = lv_palette_main(LV_PALETTE_RED); }
+        else
+        if (level_1 < 20.) { color = lv_palette_main(LV_PALETTE_ORANGE); }
+        else
+        if (level_1 < 80.) { color = lv_palette_main(LV_PALETTE_YELLOW); }
+        else
+        if (level_1 <= 100.) { color = lv_palette_main(LV_PALETTE_GREEN); }
+        else { color = lv_palette_main(LV_PALETTE_BLUE); }
+        lv_obj_set_style_text_color(label_level_1, color, 0);
+        snprintf(msg, sizeof(msg), "%5.1f%%", level_1);
+        lv_label_set_text(label_level_1, msg);
+
+        xSemaphoreGive(lvgl_mutex);
+    }
 }
 
 void display_show_login_result(const char *identifier, bool success)
@@ -561,8 +601,11 @@ static void lcd_lvgl_task(void *arg)
 
     while (1)
     {
-        lv_tick_inc(10);
-        lv_timer_handler();
+        if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            lv_tick_inc(10);
+            lv_timer_handler();
+            xSemaphoreGive(lvgl_mutex);
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
