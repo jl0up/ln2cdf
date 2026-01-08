@@ -48,7 +48,7 @@ float average_voltage(int* mem, int n){
     int k = n/5;
     for (int i = k ; i < (n - k) ; i++ ) {
         // ESP_LOGD( "average_voltage()", "%d | %d | %d", n, k, i);
-        avg += mem[k];
+        avg += mem[i];
     }
     return (float)avg / (float)(n - k - k);
 }
@@ -58,7 +58,7 @@ int average_adc_raw(int* mem, int n){
     int k = n/5;
     for (int i = k ; i < (n - k) ; i++ ) {
         // ESP_LOGD( "average_adc_raw()", "%d | %d | %d", n, k, i);
-        avg += mem[k];
+        avg += mem[i];
     }
     return avg / (n - k - k);
 }
@@ -290,7 +290,8 @@ void app_main(void)
         // ESP_LOGI(TAG, "%s", err_buf);
 
         if (idx%N_AVG == 0){
-            ESP_LOGD(TAG, "AVERAGING: idx=%d\tidxMODN_AVG=%d\tN_AVG/2=%d\n", idx, idx%N_AVG, N_AVG/2);
+            idx = 0; // reset index to avoid overflow
+            ESP_LOGD(TAG, "AVERAGING");
             
             // *err_buf = '\0';
             for(int j=0;j<N_ADC_UNITS;j++){
