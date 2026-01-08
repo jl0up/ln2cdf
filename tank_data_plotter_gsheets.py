@@ -24,6 +24,9 @@ CREDENTIALS_FILE = "ln2-datalog-eb12001e2332.json"  # Download from Google Cloud
 # Update interval in milliseconds (300000 ms = 5 minutes)
 UPDATE_INTERVAL = 5 * 60 * 1000  # 5 minutes
 
+# Liters per percent for tank volume calculation
+LITERS_PER_PERCENT = 10
+
 # User names for highlighting
 USERS = ["Admin", "SB", "PQ", "CPB", "CSE", "LAM", "UAR1", "UAR2", "A&B", "LKB", "Guest"]
 
@@ -178,6 +181,52 @@ def extract_user_regions(df):
     return regions
 
 
+def calculate_user_consumption(df, liters_per_percent=None):
+    """
+    Calculate liters consumed by each user.
+    Returns dict with {user: liters}
+    """
+    if liters_per_percent is None:
+        liters_per_percent = LITERS_PER_PERCENT
+    
+    if df is None or len(df) == 0 or 'User' not in df.columns:
+        return {}
+    
+    consumption = {user: 0.0 for user in USERS}
+    
+    # Sort by time to ensure proper ordering
+    df = df.sort_values('Date/Time').reset_index(drop=True)
+    
+    for i in range(1, len(df)):
+        user = df.loc[i, 'User']
+        
+        if pd.notna(user) and user in USERS:
+            # Calculate tank level differences from previous reading
+            tank1_prev = df.loc[i-1, 'Tank 1']
+            tank1_curr = df.loc[i, 'Tank 1']
+            tank2_prev = df.loc[i-1, 'Tank 2']
+            tank2_curr = df.loc[i, 'Tank 2']
+            
+            if pd.notna(tank1_prev) and pd.notna(tank1_curr):
+                tank1_diff = tank1_prev - tank1_curr  # Positive = consumption
+            else:
+                tank1_diff = 0
+            
+            if pd.notna(tank2_prev) and pd.notna(tank2_curr):
+                tank2_diff = tank2_prev - tank2_curr  # Positive = consumption
+            else:
+                tank2_diff = 0
+            
+            # Sum differences (only count positive = consumption)
+            total_percent_diff = max(0, tank1_diff) + max(0, tank2_diff)
+            
+            # Convert to liters
+            consumption[user] += total_percent_diff * liters_per_percent
+    
+    return consumption
+
+
+
 def create_figure(df):
     """Create Plotly figure with 4 subplots."""
     if df is None or len(df) == 0:
@@ -196,7 +245,7 @@ def create_figure(df):
         rows=4, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.05,
-        subplot_titles=('Tank 1 Level', 'Tank 2 Level', 'Temperature (°C)', 'Humidity'),
+        # subplot_titles=('Tank 1 Level', 'Tank 2 Level', 'Temperature (°C)', 'Humidity'),
     )
     
     # Tank 1
@@ -278,7 +327,7 @@ def create_figure(df):
         
         fig.add_annotation(
             x=mid_time,
-            y=1.04,  # Position above the plot
+            y=1.08,  # Position above the plot
             xref='x',  # Reference to x-axis of first subplot
             yref='paper',  # Reference to paper coordinates
             text=user,
@@ -308,6 +357,7 @@ def create_figure(df):
         showlegend=True,
         template='plotly_white',
         legend=dict(
+            itemsizing='constant',
             orientation="h",
             yanchor="bottom",
             y=1.07,
@@ -324,47 +374,173 @@ app = Dash(__name__)
 
 # App layout
 app.layout = html.Div([
-    html.H1("Tank Monitoring Dashboard - Live from Google Sheets", 
-            style={'textAlign': 'center', 'color': '#2c3e50', 'marginBottom': 20}),
-    
+    # Header with just title and status
     html.Div([
+        html.H1("Tank Monitoring Dashboard - Live from Google Sheets", 
+                style={'margin': 0, 'color': '#2c3e50'}),
         html.Div(id='status-text', 
-                style={'textAlign': 'center', 'color': '#7f8c8d', 'marginBottom': 10}),
+                style={'color': '#7f8c8d', 'marginTop': 5}),
         html.Div(f"Auto-refresh interval: {UPDATE_INTERVAL / 60000:.0f} minutes", 
-                style={'textAlign': 'center', 'color': '#95a5a6', 'fontSize': 12}),
-    ]),
+                style={'color': '#95a5a6', 'fontSize': 12}),
+    ], style={'padding': '20px', 'paddingBottom': '10px'}),
     
-    dcc.Graph(id='live-graph', style={'height': '90vh'}),
+    # Main content: graph on left, controls on right
+    html.Div([
+        # Left - graph
+        dcc.Graph(id='live-graph', style={'flex': 1}),
+        
+        # Right - date range and stats
+        html.Div([
+            # Liters per percent input
+            html.Div([
+                html.Label("Liters per %:", style={'fontWeight': 'bold', 'marginBottom': 5, 'display': 'block'}),
+                dcc.Input(
+                    id='liters-per-percent-input',
+                    type='number',
+                    value=LITERS_PER_PERCENT,
+                    step=0.1,
+                    style={'width': '100%', 'fontSize': 12}
+                )
+            ], style={'padding': '10px', 'backgroundColor': '#f8f9fa', 'borderRadius': '5px', 'marginBottom': '15px'}),
+            # Date range filter
+            html.Div([
+                html.Div("Date Range:", style={'fontWeight': 'bold', 'marginBottom': 5}),
+                dcc.RadioItems(
+                    id='range-selector',
+                    options=[
+                        {'label': 'Last 24 hours', 'value': '24h'},
+                        {'label': 'Last 7 days', 'value': '7d'},
+                        {'label': 'Last 14 days', 'value': '14d'},
+                        {'label': 'Last 30 days', 'value': '30d'},
+                        {'label': 'This year', 'value': 'year'},
+                        {'label': 'Month:', 'value': 'month'}
+                    ],
+                    value='7d',
+                    style={'fontSize': 12}
+                ),
+                dcc.Dropdown(
+                    id='month-selector',
+                    options=[
+                        {'label': 'January', 'value': 1},
+                        {'label': 'February', 'value': 2},
+                        {'label': 'March', 'value': 3},
+                        {'label': 'April', 'value': 4},
+                        {'label': 'May', 'value': 5},
+                        {'label': 'June', 'value': 6},
+                        {'label': 'July', 'value': 7},
+                        {'label': 'August', 'value': 8},
+                        {'label': 'September', 'value': 9},
+                        {'label': 'October', 'value': 10},
+                        {'label': 'November', 'value': 11},
+                        {'label': 'December', 'value': 12}
+                    ],
+                    value=datetime.now().month,
+                    style={'marginTop': 5, 'fontSize': 11}
+                )
+            ], style={'padding': '10px', 'backgroundColor': '#f8f9fa', 'borderRadius': '5px', 'marginBottom': '15px'}),
+            
+            # User statistics
+            html.Div(id='user-stats', 
+                    style={
+                        'padding': '10px',
+                        'backgroundColor': '#f8f9fa',
+                        'borderRadius': '5px',
+                        'fontSize': '12px'
+                    }),
+        ], style={'width': '200px', 'marginLeft': '15px'}),
+        
+    ], style={'display': 'flex', 'paddingLeft': '20px', 'paddingRight': '20px', 'height': '80vh'}),
     
-    # Interval component for auto-refresh
+    # Hidden store and interval (unchanged)
+    dcc.Store(id='full-data-store'),
     dcc.Interval(
         id='interval-component',
-        interval=UPDATE_INTERVAL,  # Update interval in milliseconds
+        interval=UPDATE_INTERVAL,
         n_intervals=0
     )
 ])
 
-
 @app.callback(
-    [Output('live-graph', 'figure'),
+    [Output('full-data-store', 'data'),
      Output('status-text', 'children')],
     [Input('interval-component', 'n_intervals')]
 )
-def update_graph(n):
-    """Callback function to update graph periodically."""
-    # Load data from Google Sheets
+def load_data(n):
+    """Load data from Google Sheets and store."""
     df = load_data_from_sheets()
     
-    # Create figure
-    fig = create_figure(df)
-    
-    # Status message
     if df is not None and len(df) > 0:
         status = f"✓ Data loaded: {len(df)} rows | Date range: {df['Date/Time'].min()} to {df['Date/Time'].max()}"
+        # Convert to JSON for storage
+        return df.to_json(date_format='iso', orient='split'), status
     else:
-        status = "⚠ Error loading data from Google Sheets"
+        return None, "⚠ Error loading data from Google Sheets"
+
+
+@app.callback(
+    [Output('live-graph', 'figure'),
+     Output('user-stats', 'children')],
+    [Input('full-data-store', 'data'),
+     Input('range-selector', 'value'),
+     Input('month-selector', 'value'),
+     Input('liters-per-percent-input', 'value')]
+)
+def update_graph(data_json, range_value, month_value, liters_per_percent):
+    """Filter data and update graph based on selected date range."""
+    if data_json is None:
+        fig = go.Figure()
+        fig.add_annotation(text="Loading...", xref="paper", yref="paper",
+                          x=0.5, y=0.5, showarrow=False, font=dict(size=20))
+        return fig, []
+
+    if liters_per_percent is None or liters_per_percent <= 0:
+        liters_per_percent = LITERS_PER_PERCENT
+
+    # Load full dataset
+    df = pd.read_json(data_json, orient='split')
+    df['Date/Time'] = pd.to_datetime(df['Date/Time'])
     
-    return fig, status
+    # Filter based on selection
+    now = datetime.now()
+    if range_value == '24h':
+        cutoff = now - pd.Timedelta(hours=24)
+        df_filtered = df[df['Date/Time'] >= cutoff]
+    elif range_value == '7d':
+        cutoff = now - pd.Timedelta(days=7)
+        df_filtered = df[df['Date/Time'] >= cutoff]
+    elif range_value == '14d':
+        cutoff = now - pd.Timedelta(days=14)
+        df_filtered = df[df['Date/Time'] >= cutoff]
+    elif range_value == '30d':
+        cutoff = now - pd.Timedelta(days=30)
+        df_filtered = df[df['Date/Time'] >= cutoff]
+    elif range_value == 'year':
+        year = now.year
+        df_filtered = df[(df['Date/Time'].dt.year == year)]
+    elif range_value == 'month':
+        year = now.year
+        df_filtered = df[(df['Date/Time'].dt.year == year) & 
+                         (df['Date/Time'].dt.month == month_value)]
+    else:
+        df_filtered = df
+    
+    # Create figure
+    fig = create_figure(df_filtered)
+    
+    # Calculate consumption on filtered data with custom liters_per_percent
+    consumption = calculate_user_consumption(df_filtered, liters_per_percent)
+       
+    # Create user stats display
+    stats_children = [html.Div("User Consumption (L):", style={'fontWeight': 'bold', 'marginBottom': '8px'})]
+    for user in USERS:
+        liters = consumption.get(user, 0.0)
+        if liters > 0:
+            stats_children.append(
+                html.Div(f"{user}: {liters:.1f} L", 
+                        style={'marginBottom': '3px'})
+            )
+    
+    return fig, stats_children
 
 
 if __name__ == '__main__':
