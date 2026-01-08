@@ -20,13 +20,14 @@
 // #include "ds18b20.h"
 #include "ota_update.h"
 #include "temp_humidity.h"
+#include "esp_task_wdt.h"
 
 
-#define WAIT_TIME_MS 7*1000/N_AVG
-#define UPLOAD_THRESHOLD_PERCENT_0 1.0 // minimum percentage change on tank 0 to trigger upload unless identifier changed
-#define UPLOAD_THRESHOLD_PERCENT_1 0.5 // minimum percentage change an tank 1 to trigger upload unless identifier changed
+#define WAIT_TIME_MS 5*1000/N_AVG
+#define UPLOAD_THRESHOLD_PERCENT_0 0.9 // minimum percentage change on tank 0 to trigger upload unless identifier changed
+#define UPLOAD_THRESHOLD_PERCENT_1 0.7 // minimum percentage change an tank 1 to trigger upload unless identifier changed
 #define MAX_UPLOAD_INTERVAL_SECONDS 1*60*60 // maximum interval between uploads in seconds
-#define MIN_UPLOAD_INTERVAL_SECONDS    2*60 // minimum interval between uploads in seconds
+#define MIN_UPLOAD_INTERVAL_SECONDS    1*60 // minimum interval between uploads in seconds
 #define DELAY_BEFORE_LOGOUT_SECONDS 2*60*60 // seconds to wait before logging out
 #define R_EFF 46.5 // Ohm
 #define I_EMPTY 4 //3.913
@@ -267,10 +268,24 @@ void app_main(void)
     datetime_last_upload = datetime_boot - MAX_UPLOAD_INTERVAL_SECONDS; // force upload on first cycle
     datetime_last_login = datetime_boot;  // initialize last login time
 
+
+    // Initialize Task Watchdog Timer (after all init, before main loop)
+    // 30 second timeout, panic (reboot) on timeout
+    esp_task_wdt_config_t wdt_config = {
+        .timeout_ms = 30000,
+        .idle_core_mask = 0,  // Don't watch idle tasks
+        .trigger_panic = true,
+    };
+    esp_task_wdt_init(&wdt_config);
+    esp_task_wdt_add(NULL);  // Add current task (app_main task)
+
     // Reading ADC in loop
     unsigned int idx = 0;
     while (1) {
         idx++;
+
+        // Feed the watchdog at the start of each loop iteration
+        esp_task_wdt_reset();
 
         adc_oneshot_get(&adc);
 
