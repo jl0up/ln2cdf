@@ -55,7 +55,7 @@ void display_init(void)
 
 void display_start_task(void)
 {
-    xTaskCreate(lcd_lvgl_task, "lvgl_task", 4096, NULL, 6, NULL);
+    xTaskCreate(lcd_lvgl_task, "lvgl_task", 8192, NULL, 6, NULL);
     ESP_LOGI(TAG, "Display task started");
 }
 
