@@ -29,7 +29,7 @@ SHEET_ID = "YOUR_SHEET_ID_HERE"
 SHEET_NAME = "LN2 logs"  # Name of the sheet/tab to read from
 
 # Service account credentials JSON file path
-CREDENTIALS_FILE = "ln2-datalog-eb12001e2332.json"  # Download from Google Cloud Console
+CREDENTIALS_FILE = "ln2-datalog-71cf9325868b.json"  # Download from Google Cloud Console
 
 # Update interval in milliseconds (300000 ms = 5 minutes)
 UPDATE_INTERVAL = 5 * 60 * 1000  # 5 minutes
