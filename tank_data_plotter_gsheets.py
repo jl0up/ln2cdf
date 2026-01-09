@@ -1,6 +1,16 @@
 """
 Reads data from Google Sheets and auto-refreshes the plot every 5 minutes
 Uses Dash for live-updating web interface
+
+requirements:
+------------
+pandas>=2.0.0
+plotly>=5.17.0
+dash>=2.14.0
+gspread>=5.12.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
 """
 
 import pandas as pd
