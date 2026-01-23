@@ -9,7 +9,7 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#define N_AVG 27  //number of ADC samples to average MAX ~27 because of memory limits
+#define N_AVG 37  //number of ADC samples to average MAX ~27 because of memory limits
 #define N_ADC_UNITS 1
 #define N_ADC_CHANNELS 2
 

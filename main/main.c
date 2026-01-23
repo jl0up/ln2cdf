@@ -23,11 +23,11 @@
 #include "esp_task_wdt.h"
 
 
-#define WAIT_TIME_MS 5*1000/N_AVG
-#define UPLOAD_THRESHOLD_PERCENT_0 0.9 // minimum percentage change on tank 0 to trigger upload unless identifier changed
-#define UPLOAD_THRESHOLD_PERCENT_1 0.7 // minimum percentage change an tank 1 to trigger upload unless identifier changed
+#define WAIT_TIME_MS 0.7*1000
+#define UPLOAD_THRESHOLD_PERCENT_0 1.5 // minimum percentage change on tank 0 to trigger upload unless identifier changed
+#define UPLOAD_THRESHOLD_PERCENT_1 0.5 // minimum percentage change an tank 1 to trigger upload unless identifier changed
 #define MAX_UPLOAD_INTERVAL_SECONDS 1*60*60 // maximum interval between uploads in seconds
-#define MIN_UPLOAD_INTERVAL_SECONDS    1*60 // minimum interval between uploads in seconds
+#define MIN_UPLOAD_INTERVAL_SECONDS    2*60 // minimum interval between uploads in seconds
 #define DELAY_BEFORE_LOGOUT_SECONDS 2*60*60 // seconds to wait before logging out
 #define R_EFF 46.5 // Ohm
 #define I_EMPTY 4 //3.913
