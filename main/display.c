@@ -44,14 +44,21 @@ static void lcd_lvgl_task(void *arg);
 static void init_spi_display(void);
 static void init_lvgl(void);
 
+// Variables for login result timer
+static TimerHandle_t login_result_timer = NULL;
+static char pending_identifier[MAX_IDENTIFIER_LENGTH + 1] = "";
 
 void display_init(void)
 {
-    // Initialize SPI and display hardware
-    init_spi_display();
-
     // Create mutex for LVGL
     lvgl_mutex = xSemaphoreCreateMutex();
+    if (lvgl_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create LVGL mutex");
+        return;
+    }
+
+    // Initialize SPI and display hardware
+    init_spi_display();
 
     // Initialize LVGL
     init_lvgl();
@@ -234,7 +241,7 @@ void display_show_humidity(float humidity)
 
 void display_show_ip(const char *ip)
 {
-        if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         char msg[32];
         snprintf(msg, sizeof(msg), "IP: %s", ip);
         lv_label_set_text(label_inst, msg);
@@ -277,35 +284,55 @@ void display_show_levels(float level_0, float level_1)
     }
 }
 
+
+static void login_result_timer_callback(TimerHandle_t xTimer)
+{
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_PURPLE), 0);
+        lv_label_set_text(label_status, pending_identifier);
+        display_update_password_dots(0);
+
+        xSemaphoreGive(lvgl_mutex);
+    }
+}
+
 void display_show_login_result(const char *identifier, bool success)
 {
 
-    if (strcmp(identifier, keypad_get_default_identifier()) == 0)
-    {
-        lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_BLUE), 0); // Blue
-        lv_label_set_text(label_status, "LOGGING OUT");
-        strcpy(last_identifier, identifier);
-    }
-    else 
-    {
-        if (strcmp(identifier, INVALID_IDENTIFIER) == 0)
+    if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (strcmp(identifier, keypad_get_default_identifier()) == 0)
         {
-            lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_RED), 0); // Red
-            lv_label_set_text(label_status, "BAD PASSWD");
-        }
-        else
-        {
-            lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_GREEN), 0); // Green
-            lv_label_set_text(label_status, "WELCOME");
+            lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_BLUE), 0); // Blue
+            lv_label_set_text(label_status, "LOGGING OUT");
             strcpy(last_identifier, identifier);
         }
+        else 
+        {
+            if (strcmp(identifier, INVALID_IDENTIFIER) == 0)
+            {
+                lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_RED), 0); // Red
+                lv_label_set_text(label_status, "BAD PASSWD");
+            }
+            else
+            {
+                lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_GREEN), 0); // Green
+                lv_label_set_text(label_status, "WELCOME");
+                strcpy(last_identifier, identifier);
+            }
+        }
+
+        xSemaphoreGive(lvgl_mutex);
     }
 
-    // Reset display after 1 seconds
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_PURPLE), 0);
-    lv_label_set_text(label_status, last_identifier);
-    display_update_password_dots(0);
+    // Store identifier for timer callback
+    strncpy(pending_identifier, last_identifier, sizeof(pending_identifier) - 1);
+    
+    // Create timer if needed, then start it
+    if (login_result_timer == NULL) {
+        login_result_timer = xTimerCreate("login_timer", pdMS_TO_TICKS(1000), 
+                                          pdFALSE, NULL, login_result_timer_callback);
+    }
+    xTimerReset(login_result_timer, 0);
 }
 
 
