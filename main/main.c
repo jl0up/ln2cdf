@@ -29,9 +29,9 @@
 #define MAX_UPLOAD_INTERVAL_SECONDS 1*60*60 // maximum interval between uploads in seconds
 #define MIN_UPLOAD_INTERVAL_SECONDS    2*60 // minimum interval between uploads in seconds
 #define DELAY_BEFORE_LOGOUT_SECONDS 2*60*60 // seconds to wait before logging out
-#define R_EFF 46.5 // Ohm
-#define I_EMPTY 4 //3.913
-#define I_FULL 20 //20.131
+#define R_EFF 46.5 // 47 Ohm, installed, measured 46.5 Ohm
+#define I_EMPTY 3.82 // theoretical empty current: 4 mA
+#define I_FULL 20.16 // theoretical full current: 20 mA
 // #define ERR_BUF_SIZE 256
 
 const static char *TAG = "ln2cdf: main.c";
