@@ -4,6 +4,10 @@
 
 static const char *TAG = "KEYPAD";
 
+// Semaphore for keypad thread safety
+static SemaphoreHandle_t keypad_mutex = NULL;
+
+
 // Keypad matrix
 static const char keypad_map[ROWS][COLS] = {
     {'1', '2', '3'},
@@ -66,6 +70,14 @@ char last_identifier[MAX_IDENTIFIER_LENGTH + 1] = DEFAULT_IDENTIFIER;
 // Creates queue, timer, and configures GPIO pins for keypad
 void keypad_init(void)
 {
+
+    // Create mutex for keypad
+    keypad_mutex = xSemaphoreCreateMutex();
+    if (keypad_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create keypad mutex");
+        return;
+    }
+
     // Create queue for key events
     key_queue = xQueueCreate(10, sizeof(key_event_t));
     if (key_queue == NULL) {
@@ -228,25 +240,30 @@ static void key_handler_task(void *arg)
             if (key_event.pressed) {
                 ESP_LOGI(TAG, "Processing key press: %c", key_event.key);
                 
-                // Handle password input
-                if (key_event.key >= '0' && key_event.key <= '9') {
-                    // Numeric key - add to password
-                    handle_password_digit(key_event.key);
-                } else if (key_event.key == '#') {
-                    // Shortcut key - process default password
-                    handle_shortcut_key();
-                } else if (key_event.key == '*') {
-                    // Star key - reset/cancel
-                    ESP_LOGI(TAG, "Cancel key pressed - resetting password");
-                    xTimerStop(password_timer, 0);
-                    memset(current_password, 0, sizeof(current_password));
-                    password_index = 0;
-                    
-                    if (password_callback_func) {
-                        password_callback_func("", "Cancelled - Ready", false);
+                if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+
+                    // Handle password input
+                    if (key_event.key >= '0' && key_event.key <= '9') {
+                        // Numeric key - add to password
+                        handle_password_digit(key_event.key);
+                    } else if (key_event.key == '#') {
+                        // Shortcut key - process default password
+                        handle_shortcut_key();
+                    } else if (key_event.key == '*') {
+                        // Star key - reset/cancel
+                        ESP_LOGI(TAG, "Cancel key pressed - resetting password");
+                        xTimerStop(password_timer, 0);
+                        memset(current_password, 0, sizeof(current_password));
+                        password_index = 0;
+                        
+                        if (password_callback_func) {
+                            password_callback_func("", "Cancelled - Ready", false);
+                        }
+                    } else {
+                        ESP_LOGW(TAG, "Invalid key for password input: %c", key_event.key);
                     }
-                } else {
-                    ESP_LOGW(TAG, "Invalid key for password input: %c", key_event.key);
+
+                    xSemaphoreGive(keypad_mutex);
                 }
             }
         }
@@ -316,21 +333,18 @@ static void process_password(const char* password)
 // Timer callback function for password timeout
 static void password_timeout_callback(TimerHandle_t xTimer)
 {
-    ESP_LOGW(TAG, "Password timeout - processing incomplete password");
+    ESP_LOGW(TAG, "Password timeout");
     
-    if (password_callback_func) {
-        password_callback_func("", "TIMEOUT", false);
+    if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        
+        if (password_callback_func) {
+            password_callback_func("", "TIMEOUT", false);
+        }
+    
+        // Reset password state
+        memset(current_password, 0, sizeof(current_password));
+        password_index = 0;
+
+        xSemaphoreGive(keypad_mutex);
     }
-    
-    // Pad incomplete password with zeros
-    while (password_index < MAX_PASSWORD_LENGTH) {
-        current_password[password_index++] = '0';
-    }
-    current_password[MAX_PASSWORD_LENGTH] = '\0';
-    
-    process_password(current_password);
-    
-    // Reset password state
-    memset(current_password, 0, sizeof(current_password));
-    password_index = 0;
 }
