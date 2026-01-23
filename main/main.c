@@ -340,7 +340,7 @@ void app_main(void)
             display_show_datetime(datetime_str);
 
             // 
-            if (difftime(datetime_current, datetime_last_login) > DELAY_BEFORE_LOGOUT_SECONDS) {
+            if ( (strcmp(last_identifier, DEFAULT_IDENTIFIER) != 0) && (difftime(datetime_current, datetime_last_login) > DELAY_BEFORE_LOGOUT_SECONDS) ) {
                 // strcpy(last_identifier, DEFAULT_IDENTIFIER);
                 keypad_callback(DEFAULT_PASSWORD, DEFAULT_IDENTIFIER, false);
             }
