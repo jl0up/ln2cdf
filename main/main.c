@@ -21,7 +21,7 @@
 #include "ota_update.h"
 #include "temp_humidity.h"
 #include "esp_task_wdt.h"
-
+#include "webserver.h"
 
 #define WAIT_TIME_MS 0.7*1000
 #define UPLOAD_THRESHOLD_PERCENT_0 1.5 // minimum percentage change on tank 0 to trigger upload unless identifier changed
@@ -138,8 +138,8 @@ void app_main(void)
     /**************************************
      *** Enable OTA update by http POST ***
      **************************************/
-    start_ota_server();
-
+    //start_ota_server();
+    start_webserver();
 
     // /**********************************
     //  *** 1-wire temperature sensors ***
@@ -402,6 +402,8 @@ void app_main(void)
                 }
             }
         }
+
+        webpage_update(level_0, level_1, temperature, humidity, last_identifier);
         vTaskDelay(pdMS_TO_TICKS(WAIT_TIME_MS));
     }
 
