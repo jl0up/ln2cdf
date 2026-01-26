@@ -18,7 +18,7 @@ dependencies:
       type: service
     version: 2.0.0
   espressif/cmake_utilities:
-    component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
+    component_hash: 05165f30922b422b4b90c08845e6d449329b97370fbd06309803d8cb539d79e3
     dependencies:
     - name: idf
       require: private
@@ -26,42 +26,21 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 0.5.3
-  espressif/ds18b20:
-    component_hash: 87a753636db56dbb42633b8fdd615c63c5e752ec9c9629e6386d8115f36efc30
-    dependencies:
-    - name: espressif/onewire_bus
-      registry_url: https://components.espressif.com
-      require: private
-      version: ^1.0.0
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 0.1.2
+    version: 1.1.1
   espressif/i2c_bus:
-    component_hash: fe8f85b3859544fabb960d7bcec24278cd3c88e3f1777e8a2075b0aca202fd9f
+    component_hash: 4e990dc11734316186b489b362c61d41f23f79d58bc169795cec215e528cba14
     dependencies:
     - name: espressif/cmake_utilities
       registry_url: https://components.espressif.com
       require: private
-      version: 0.*
+      version: '*'
     - name: idf
       require: private
       version: '>=4.0'
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 1.4.2
-  espressif/onewire_bus:
-    component_hash: 11729fd9a5de80225177a61e9cd77de91683b8ec300e83710d5327b666dbe884
-    dependencies:
-    - name: idf
-      require: private
-      version: '>=5.0'
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 1.0.4
+    version: 1.5.0
   idf:
     source:
       type: idf
@@ -75,10 +54,8 @@ dependencies:
     version: 9.2.2
 direct_dependencies:
 - espressif/aht20
-- espressif/ds18b20
-- espressif/onewire_bus
 - idf
 - lvgl/lvgl
-manifest_hash: 7caaa511f6c858a0d3ddaa90fc482bd337faf747df7a84e5a7a4df00b3233852
+manifest_hash: 7ae203443ec9035688f2548d89793295bbc58b2174c962aa197feb1876b6db59
 target: esp32c6
 version: 2.0.0
