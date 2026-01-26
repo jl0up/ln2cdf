@@ -6,6 +6,7 @@
 #include "esp_heap_caps.h"
 #include "esp_ota_ops.h"
 #include "esp_app_format.h"
+#include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdio.h>
@@ -46,6 +47,23 @@ static void format_bytes(size_t bytes, char *buf, size_t buf_size) {
         snprintf(buf, buf_size, "%.1f KB", bytes / 1024.0);
     } else {
         snprintf(buf, buf_size, "%d B", (int)bytes);
+    }
+}
+
+static const char* reset_reason_to_str(esp_reset_reason_t reason) {
+    switch (reason) {
+        case ESP_RST_POWERON:    return "Power-on";
+        case ESP_RST_EXT:        return "External pin";
+        case ESP_RST_SW:         return "Software reset";
+        case ESP_RST_PANIC:      return "Panic/Exception";
+        case ESP_RST_INT_WDT:    return "Interrupt watchdog";
+        case ESP_RST_TASK_WDT:   return "Task watchdog";
+        case ESP_RST_WDT:        return "Other watchdog";
+        case ESP_RST_DEEPSLEEP:  return "Deep sleep wake";
+        case ESP_RST_BROWNOUT:   return "Brownout";
+        case ESP_RST_SDIO:       return "SDIO";
+        case ESP_RST_USB:        return "USB peripheral";
+        default:                 return "Unknown";
     }
 }
 
@@ -111,16 +129,16 @@ static const char *html_page_template =
 "<div class='card'>"
 "<h2>Application Data</h2>"
 "<div class='grid'>"
-"<div class='stat'><div class='stat-value' id='var_a'>%.2f</div><div class='stat-label'>Tank 1</div></div>"
-"<div class='stat'><div class='stat-value' id='var_b'>%.2f</div><div class='stat-label'>Tank 2</div></div>"
-"<div class='stat'><div class='stat-value' id='var_c'>%.2f</div><div class='stat-label'>Temperature</div></div>"
-"<div class='stat'><div class='stat-value' id='var_d'>%.2f</div><div class='stat-label'>Humidity</div></div>"
+"<div class='stat'><div class='stat-value' id='var_a'>%.2f %%</div><div class='stat-label'>Tank 1</div></div>"
+"<div class='stat'><div class='stat-value' id='var_b'>%.2f %%</div><div class='stat-label'>Tank 2</div></div>"
+"<div class='stat'><div class='stat-value' id='var_c'>%.2f °C</div><div class='stat-label'>Temperature</div></div>"
+"<div class='stat'><div class='stat-value' id='var_d'>%.2f %%</div><div class='stat-label'>Humidity</div></div>"
 "<div class='stat'><div class='stat-value' id='var_e'>%s</div><div class='stat-label'>Current user</div></div>"
 "</div>"
 "</div>"
 
 "<div class='card'>"
-"<h2>System Memory</h2>"
+"<h2>Diagnostics</h2>"
 "<div class='grid'>"
 "<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Total Heap</div></div>"
 "<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Free Heap</div></div>"
@@ -128,6 +146,12 @@ static const char *html_page_template =
 "<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Total Internal</div></div>"
 "<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Free Internal</div></div>"
 "<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Largest Free Block</div></div>"
+"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Total DMA</div></div>"
+"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Free DMA</div></div>"
+"<div class='stat'><div class='stat-value'>%s s</div><div class='stat-label'>Uptime</div></div>"
+"<div class='stat'><div class='stat-value'>%d dBm</div><div class='stat-label'>Wifi strength</div></div>"
+"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Last Reset</div></div>"
+"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Wifi MAC address</div></div>"
 "<div class='stat'><div class='stat-value'>%lu</div><div class='stat-label'>Active Tasks</div></div>"
 "</div>"
 "</div>"
@@ -245,15 +269,44 @@ static esp_err_t root_handler(httpd_req_t *req) {
     size_t total_internal = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
     size_t free_internal = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     size_t largest_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+    size_t free_dma = heap_caps_get_free_size(MALLOC_CAP_DMA);
+    size_t total_dma = heap_caps_get_total_size(MALLOC_CAP_DMA);
+
+    // Uptime
+    int64_t uptime_us = esp_timer_get_time();  // Microseconds since boot
+    uint32_t uptime_sec = uptime_us / 1000000;
+
+    // WiFi signal strength
+    int8_t rssi = -99; // Default invalid RSSI
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        rssi = ap_info.rssi;  // Signal strength in dBm
+    }
+
+    // Get reset reason
+    esp_reset_reason_t reset_reason = esp_reset_reason();
+    const char *reset_reason_str = reset_reason_to_str(reset_reason);
+
+    // Get MAC address
+    uint8_t mac[6];
+    char mac_str[18];
+    esp_wifi_get_mac(WIFI_IF_STA, mac);  // WIFI_IF_STA or WIFI_IF_AP
+    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+    // Get number of tasks
     UBaseType_t task_count = uxTaskGetNumberOfTasks();
     
-    char total_heap_str[32], free_heap_str[32], min_heap_str[32], total_internal_str[32], free_internal_str[32], largest_free_block_str[32];
+    char total_heap_str[32], free_heap_str[32], min_heap_str[32], total_internal_str[32], free_internal_str[32], largest_free_block_str[32], total_dma_str[32], free_dma_str[32];
     format_bytes(total_heap, total_heap_str, sizeof(total_heap_str));
     format_bytes(free_heap, free_heap_str, sizeof(free_heap_str));
     format_bytes(min_free_heap, min_heap_str, sizeof(min_heap_str));
     format_bytes(total_internal, total_internal_str, sizeof(total_internal_str));
     format_bytes(free_internal, free_internal_str, sizeof(free_internal_str));
     format_bytes(largest_free_block, largest_free_block_str, sizeof(largest_free_block_str));
+    format_bytes(total_dma, total_dma_str, sizeof(total_dma_str));
+    format_bytes(free_dma, free_dma_str, sizeof(free_dma_str));
+
 
     // Build task list HTML
     char task_list[2048] = "";
@@ -298,7 +351,8 @@ static esp_err_t root_handler(httpd_req_t *req) {
     
     int written = snprintf(html, html_size, html_page_template,
         var_a, var_b, var_c, var_d, var_e,
-        total_heap_str, free_heap_str, min_heap_str, total_internal_str, free_internal_str, largest_free_block_str,
+        total_heap_str, free_heap_str, min_heap_str, total_internal_str, free_internal_str, largest_free_block_str, total_dma_str, free_dma_str,
+        uptime_sec, rssi, reset_reason_str, mac_str,
         (unsigned long)task_count,
         task_list);
     
