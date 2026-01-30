@@ -92,12 +92,13 @@ static const char *html_page_template =
 "       margin: 0; padding: 20px; background: #1a1a2e; color: #eee; }"
 "h1 { color: #00d9ff; text-align: center; margin-bottom: 30px; }"
 "h2 { color: #00d9ff; margin-top: 0; border-bottom: 2px solid #00d9ff; padding-bottom: 10px; }"
-".container { max-width: 900px; margin: 0 auto; }"
+".container { max-width: 1100px; margin: 0 auto; }"
 ".card { background: #16213e; padding: 20px; margin: 15px 0; border-radius: 12px; "
 "        box-shadow: 0 4px 6px rgba(0,0,0,0.3); }"
 ".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }"
-".stat { background: #0f3460; padding: 15px; border-radius: 8px; text-align: center; }"
+".stat { background: #0f3460; padding: 10px; border-radius: 8px; text-align: center; }"
 ".stat-value { font-size: 28px; font-weight: bold; color: #00d9ff; }"
+".stat-value-small { font-size: 18px; font-weight: bold; color: #00d9ff; }"
 ".stat-label { font-size: 12px; color: #888; text-transform: uppercase; margin-top: 5px; }"
 "table { width: 100%%; border-collapse: collapse; margin-top: 10px; }"
 "th, td { padding: 10px; text-align: left; border-bottom: 1px solid #0f3460; }"
@@ -140,19 +141,19 @@ static const char *html_page_template =
 "<div class='card'>"
 "<h2>Diagnostics</h2>"
 "<div class='grid'>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Total Heap</div></div>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Free Heap</div></div>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Min Free Heap</div></div>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Total Internal</div></div>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Free Internal</div></div>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Largest Free Block</div></div>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Total DMA</div></div>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Free DMA</div></div>"
-"<div class='stat'><div class='stat-value'>%s s</div><div class='stat-label'>Uptime</div></div>"
-"<div class='stat'><div class='stat-value'>%d dBm</div><div class='stat-label'>Wifi strength</div></div>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Last Reset</div></div>"
-"<div class='stat'><div class='stat-value'>%s</div><div class='stat-label'>Wifi MAC address</div></div>"
-"<div class='stat'><div class='stat-value'>%lu</div><div class='stat-label'>Active Tasks</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Total Heap</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Free Heap</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Min Free Heap</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Total Internal</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Free Internal</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Largest Free Block</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Total DMA</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Free DMA</div></div>"
+"<div class='stat'><div class='stat-value-small'>%lu s</div><div class='stat-label'>Uptime</div></div>"
+"<div class='stat'><div class='stat-value-small'>%ld dBm</div><div class='stat-label'>Wifi strength</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Reset Reason</div></div>"
+"<div class='stat'><div class='stat-value-small'>%s</div><div class='stat-label'>Wifi MAC address</div></div>"
+"<div class='stat'><div class='stat-value-small'>%lu</div><div class='stat-label'>Active Tasks</div></div>"
 "</div>"
 "</div>"
 
@@ -352,7 +353,7 @@ static esp_err_t root_handler(httpd_req_t *req) {
     int written = snprintf(html, html_size, html_page_template,
         var_a, var_b, var_c, var_d, var_e,
         total_heap_str, free_heap_str, min_heap_str, total_internal_str, free_internal_str, largest_free_block_str, total_dma_str, free_dma_str,
-        uptime_sec, rssi, reset_reason_str, mac_str,
+        (unsigned long)uptime_sec, (long)rssi, reset_reason_str, mac_str,
         (unsigned long)task_count,
         task_list);
     
