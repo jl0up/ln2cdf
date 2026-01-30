@@ -51,12 +51,8 @@
     char url[512];
     
     // Get current time for timestamp
-    char time_str[64] = "unknown_time";
-    struct tm timeinfo;
     time_t now;
     time(&now);
-    localtime_r(&now, &timeinfo);
-    strftime(time_str, sizeof(time_str), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
     
     // Construct URL with query parameters
     // Note: URL encoding would be better but we're keeping it simple

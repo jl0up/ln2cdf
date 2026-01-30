@@ -9,6 +9,6 @@ void initialize_sntp(void) {
     esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_init();
-    setenv("TZ", "UTC+0", 1);
+    setenv("TZ", "Europe/Paris", 1);
     tzset();
 }
