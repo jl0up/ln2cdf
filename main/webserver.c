@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "esp_timer.h"
+#include <time.h>
 
 #define HISTORY_SIZE 64
 
@@ -37,6 +38,17 @@ static float var_c_history[HISTORY_SIZE];
 static float var_d_history[HISTORY_SIZE];
 static int history_index = 0;
 static int history_count = 0;
+static int history_update_interval_s = 900;  // Default: 15 minutes
+
+int get_history_update_interval_s(void) {
+    return history_update_interval_s;
+}
+
+void set_history_update_interval_s(int interval_s) {
+    if (interval_s > 0 && interval_s < 3600) {  // Allow 1s to 1 hour
+        history_update_interval_s = interval_s;
+    }
+}
 
 
 void webpage_update(float a, float b, float c, float d, const char *e) {
@@ -100,7 +112,7 @@ static void delayed_restart_local(void) {
 }
 
 static void generate_chart_svg(char *buf, size_t buf_size, float *history_a, float *history_b, float *history_c, float *history_d,
-                                int index, int count, int width, int height) {
+                                int64_t *history_ts, int index, int count, int width, int height, int64_t current_time_us) {
     if (count == 0) {
         snprintf(buf, buf_size, "<svg width='%d' height='%d'><text x='10' y='%d' "
                  "fill='#888'>No data yet</text></svg>", width, height, height/2);
@@ -114,24 +126,21 @@ static void generate_chart_svg(char *buf, size_t buf_size, float *history_a, flo
     }
     
     // Find min/max for scaling
-    float min_val = 0.0f;   // 0% minus some margin
-    float max_val = 100.0f;   // 100% plus some margin
-    // for (int i = 0; i < count; i++) {
-    //     if (history_a[i] < min_val) min_val = history_a[i];
-    //     if (history_a[i] > max_val) max_val = history_a[i];
-    // }
-    
-    // // Add some margin if min==max
-    // if (max_val - min_val < 0.001f) {
-    //     min_val -= 1.0f;
-    //     max_val += 1.0f;
-    // }
+    float min_val = 0.0f;   // 0%
+    float max_val = 100.0f;   // 100%
     
     float range = max_val - min_val;
     if (range <= 0.0001f) range = 1.0f;
-    int margin = 5;
+    int margin = 40;  // Increased for axis labels
     int chart_w = width - 2 * margin;
     int chart_h = height - 2 * margin;
+    
+    // Calculate time span: oldest point age in seconds
+    int64_t oldest_idx = (index - count + HISTORY_SIZE) % HISTORY_SIZE;
+    int64_t oldest_timestamp = history_ts[oldest_idx];
+    int64_t time_span_us = current_time_us - oldest_timestamp;
+    double time_span_hours = time_span_us / (3600.0 * 1e6);
+    if (time_span_hours < 0.001) time_span_hours = 0.001;  // Avoid division by zero
     
     // Build points string for polyline (allocate on heap to avoid large stack usage)
     const int points_size = 1024;
@@ -158,7 +167,10 @@ static void generate_chart_svg(char *buf, size_t buf_size, float *history_a, flo
     for (int i = 0; i < count; i++) {
         // Read from oldest to newest
         int idx = (index - count + i + HISTORY_SIZE) % HISTORY_SIZE;
-        int x = margin + (i * chart_w) / (count > 1 ? count - 1 : 1);
+        int64_t age_us = current_time_us - history_ts[idx];
+        double age_hours = age_us / (3600.0 * 1e6);
+        // x position: right-to-left (newest on right), proportional to age
+        int x = margin + chart_w - (int)((age_hours / time_span_hours) * chart_w);
         int y = 0;
 
         int remaining, ret;
@@ -192,20 +204,50 @@ static void generate_chart_svg(char *buf, size_t buf_size, float *history_a, flo
         offset_d += ret;
     }
     
+    // Build SVG with grid
+    char *svg_grid = malloc(2048);
+    if (!svg_grid) {
+        free(points_a); free(points_b); free(points_c); free(points_d);
+        snprintf(buf, buf_size, "<svg width='%d' height='%d'></svg>", width, height);
+        return;
+    }
+    int grid_offset = 0;
+    
+    // Vertical grid lines (5 divisions = every 20%)
+    for (int i = 0; i <= 5; i++) {
+        int y_pos = margin + (i * chart_h) / 5;
+        grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
+            "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
+            "<text x='5' y='%d' fill='#888' font-size='9'>%.0f%%</text>",
+            margin, y_pos, margin + chart_w, y_pos,
+            y_pos + 3, max_val - (i * (max_val - min_val) / 5));
+    }
+    
+    // Horizontal grid lines (every hour)
+    int max_hours = (int)time_span_hours + 1;
+    for (int h = 0; h <= max_hours; h++) {
+        double age = h;
+        int x_pos = margin + chart_w - (int)((age / time_span_hours) * chart_w);
+        if (x_pos >= margin && x_pos <= margin + chart_w) {
+            grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
+                "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
+                "<text x='%d' y='%d' fill='#888' font-size='9'>-%dh</text>",
+                x_pos, margin, x_pos, margin + chart_h,
+                x_pos - 10, margin + chart_h + 15, h);
+        }
+    }
+    
     snprintf(buf, buf_size,
         "<svg width='%d' height='%d' style='background:#232323;border-radius:8px;'>"
+        "%s"
         "<polyline points='%s' fill='none' stroke='#5778a4' stroke-width='2'/>"
         "<polyline points='%s' fill='none' stroke='#e49444' stroke-width='2'/>"
         "<polyline points='%s' fill='none' stroke='#d1615d' stroke-width='2'/>"
         "<polyline points='%s' fill='none' stroke='#6a9f58' stroke-width='2'/>"
-        "<text x='%d' y='15' fill='#888' font-size='10'>%.1f</text>"
-        "<text x='%d' y='%d' fill='#888' font-size='10'>%.1f</text>"
         "</svg>",
-        width, height, points_a, points_b, points_c, points_d,
-        width - 40, max_val,
-        width - 40, height - 5, min_val);
+        width, height, svg_grid, points_a, points_b, points_c, points_d);
 
-    free(points_a); free(points_b); free(points_c); free(points_d);
+    free(points_a); free(points_b); free(points_c); free(points_d); free(svg_grid);
 }
 
 // ============================================================================
@@ -247,15 +289,15 @@ static const char *html_page_template =
 ".btn-blue:hover { background: #00a8e8; }"
 ".file-input { margin: 10px 0; }"
 "input[type='file'] { color: #eee; }"
-".progress { width: 100%%; height: 20px; background: #232323; border-radius: 10px; "
+".progress { width: 100%%; height: 20px; background: #0f3460; border-radius: 10px; "
 "            overflow: hidden; margin: 10px 0; display: none; }"
-".progress-bar { height: 100%%; background: linear-gradient(90deg, #cacaca, #e94560); "
+".progress-bar { height: 100%%; background: linear-gradient(90deg, #00d9ff, #e94560); "
 "                width: 0%%; transition: width 0.3s; }"
 ".status { padding: 10px; border-radius: 6px; margin: 10px 0; display: none; }"
 ".status-success { background: #1b4332; color: #95d5b2; }"
 ".status-error { background: #641220; color: #f8d7da; }"
 "#refresh-indicator { position: fixed; top: 10px; right: 10px; padding: 5px 10px; "
-"                     background: #232323; border-radius: 4px; font-size: 12px; }"
+"                     background: #0f3460; border-radius: 4px; font-size: 12px; }"
 "</style>"
 "</head><body>"
 "<div class='container'>"
@@ -275,6 +317,11 @@ static const char *html_page_template =
 
 "<div class='card'>"
 "<h2>History</h2>"
+"<div style='margin-bottom: 10px;'>"
+"<label>Update Interval (seconds): <input type='number' id='interval-input' min='1' max='3600' value='%d' style='width: 80px; padding: 5px;'></label>"
+"<button class='btn btn-blue' onclick='updateInterval()' style='margin-left: 10px;'>Update</button>"
+"</div>"
+"<p style='color:#888; font-size: 12px;'>Current time (uptime): <strong>%s</strong></p>"
 "%s"  // chart_svg goes here
 "</div>"
 
@@ -382,6 +429,21 @@ static const char *html_page_template =
 "        .catch(err => alert('Error: ' + err));"
 "    }"
 "}"
+
+"function updateInterval() {"
+"    const intervalInput = document.getElementById('interval-input');"
+"    const interval = intervalInput.value;"
+"    if (!interval || interval < 1 || interval > 3600) {"
+"        alert('Please enter a value between 1 and 3600 seconds');"
+"        return;"
+"    }"
+"    fetch('/set_interval', { method: 'POST', body: interval })"
+"    .then(response => response.text())"
+"    .then(data => {"
+"        alert('Update interval set to ' + interval + ' seconds');"
+"    })"
+"    .catch(err => alert('Error: ' + err));"
+"}"
 "</script>"
 "</body></html>";
 
@@ -412,8 +474,9 @@ static esp_err_t root_handler(httpd_req_t *req) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed for chart");
         return ESP_FAIL;
     }
+    int64_t current_time_us = esp_timer_get_time();
     generate_chart_svg(chart_svg, chart_svg_size, var_a_history, var_b_history, var_c_history, var_d_history,
-                        history_index, history_count, 1000+4*15, 200);  // width=1000 + margins for grid gaps
+                        history_timestamps, history_index, history_count, 1000+4*15, 200, current_time_us);  // width=1000 + margins for grid gaps
 
     // Gather system info
     size_t total_heap = heap_caps_get_total_size(MALLOC_CAP_8BIT);;
@@ -428,6 +491,11 @@ static esp_err_t root_handler(httpd_req_t *req) {
     // Uptime
     int64_t uptime_us = esp_timer_get_time();  // Microseconds since boot
     uint32_t uptime_sec = uptime_us / 1000000;
+    
+    // Format current time (simplified: just show uptime as hours:minutes:seconds)
+    char datetime_now_str[32];
+    time_t datetime_now = time(NULL);
+    strftime(datetime_now_str, sizeof(datetime_now_str), "%Y/%m/%d %H:%M:%S", localtime(&datetime_now) );
 
     // WiFi signal strength
     int8_t rssi = -99; // Default invalid RSSI
@@ -461,22 +529,23 @@ static esp_err_t root_handler(httpd_req_t *req) {
     format_bytes(free_dma, free_dma_str, sizeof(free_dma_str));
 
 
-    // Build task list HTML (allocate on heap)
-    size_t task_list_size = 2048;
-    char *task_list = malloc(task_list_size);
-    if (task_list == NULL) {
-        free(chart_svg);
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed for task list");
-        return ESP_FAIL;
-    }
-    task_list[0] = '\0';
+    // Build task list HTML
+        // Build task list HTML (allocate on heap)
+        size_t task_list_size = 2048;
+        char *task_list = malloc(task_list_size);
+        if (task_list == NULL) {
+            free(chart_svg);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed for task list");
+            return ESP_FAIL;
+        }
+        task_list[0] = '\0';
     
 #if configUSE_TRACE_FACILITY
     int offset = 0;
     TaskStatus_t *task_array = pvPortMalloc(task_count * sizeof(TaskStatus_t));
     if (task_array != NULL) {
         UBaseType_t actual_count = uxTaskGetSystemState(task_array, task_count, NULL);
-        for (UBaseType_t i = 0; i < actual_count && offset < (int)task_list_size - 150; i++) {
+            for (UBaseType_t i = 0; i < actual_count && offset < (int)task_list_size - 150; i++) {
             char stack_str[32];
             format_bytes(task_array[i].usStackHighWaterMark * sizeof(StackType_t), 
                         stack_str, sizeof(stack_str));
@@ -505,14 +574,15 @@ static esp_err_t root_handler(httpd_req_t *req) {
 
     char *html = malloc(html_size);
     if (html == NULL) {
-        free(task_list);
-        free(chart_svg);
+            free(task_list);
+            free(chart_svg);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
         return ESP_FAIL;
     }
     
     int written = snprintf(html, html_size, html_page_template,
-        var_a, var_b, var_c, var_d, var_e, chart_svg,
+        var_a, var_b, var_c, var_d, var_e, 
+        get_history_update_interval_s(), datetime_now_str, chart_svg,
         total_heap_str, free_heap_str, min_heap_str, total_internal_str, free_internal_str, largest_free_block_str, total_dma_str, free_dma_str,
         (unsigned long)uptime_sec, (long)rssi, reset_reason_str, mac_str,
         (unsigned long)task_count,
@@ -528,8 +598,8 @@ static esp_err_t root_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_send(req, html, HTTPD_RESP_USE_STRLEN);
     free(html);
-    free(task_list);
-    free(chart_svg);
+        free(task_list);
+        free(chart_svg);
     
     // #pragma GCC diagnostic pop // restore warnings
     return ESP_OK;
@@ -616,6 +686,17 @@ static esp_err_t reboot_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+static esp_err_t update_interval_handler(httpd_req_t *req) {
+    char buf[64] = "";
+    if (httpd_req_recv(req, buf, sizeof(buf) - 1) > 0) {
+        int interval_s = atoi(buf);
+        set_history_update_interval_s(interval_s);
+        ESP_LOGI(TAG, "History update interval set to %d seconds", interval_s);
+    }
+    httpd_resp_sendstr(req, "OK");
+    return ESP_OK;
+}
+
 // ============================================================================
 // Server Start/Stop
 // ============================================================================
@@ -656,6 +737,14 @@ httpd_handle_t start_webserver(void) {
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &reboot_uri);
+    
+    httpd_uri_t interval_uri = {
+        .uri = "/set_interval",
+        .method = HTTP_POST,
+        .handler = update_interval_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &interval_uri);
     
     ESP_LOGI(TAG, "Web server started successfully");
     return server;
