@@ -11,6 +11,10 @@
 #include "freertos/task.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include "esp_timer.h"
+
+#define HISTORY_SIZE 64
 
 // If you have delayed_restart.h, include it; otherwise we define a simple version
 // #include "delayed_restart.h"
@@ -26,6 +30,15 @@ static float var_c = 0.0f;
 static float var_d = 0.0f;
 static char var_e[256] = "not set";
 
+static int64_t history_timestamps[HISTORY_SIZE];  // microseconds since boot
+static float var_a_history[HISTORY_SIZE];
+static float var_b_history[HISTORY_SIZE];
+static float var_c_history[HISTORY_SIZE];
+static float var_d_history[HISTORY_SIZE];
+static int history_index = 0;
+static int history_count = 0;
+
+
 void webpage_update(float a, float b, float c, float d, const char *e) {
     var_a = a;
     var_b = b;
@@ -34,6 +47,15 @@ void webpage_update(float a, float b, float c, float d, const char *e) {
     if (e != NULL) {
         strncpy(var_e, e, sizeof(var_e) - 1);
         var_e[sizeof(var_e) - 1] = '\0';
+    }
+    history_timestamps[history_index] = esp_timer_get_time();
+    var_a_history[history_index] = a;
+    var_b_history[history_index] = b;
+    var_c_history[history_index] = c;
+    var_d_history[history_index] = d;
+    history_index = (history_index + 1) % HISTORY_SIZE;
+    if (history_count < HISTORY_SIZE) {
+        history_count++;
     }
 }
 
@@ -77,6 +99,115 @@ static void delayed_restart_local(void) {
     xTaskCreate(restart_task, "restart", 2048, NULL, 5, NULL);
 }
 
+static void generate_chart_svg(char *buf, size_t buf_size, float *history_a, float *history_b, float *history_c, float *history_d,
+                                int index, int count, int width, int height) {
+    if (count == 0) {
+        snprintf(buf, buf_size, "<svg width='%d' height='%d'><text x='10' y='%d' "
+                 "fill='#888'>No data yet</text></svg>", width, height, height/2);
+        return;
+    }
+    
+    if (buf_size < 2560) {
+        snprintf(buf, buf_size, "<svg width='%d' height='%d'><text x='10' y='%d' "
+                 "fill='#888'>Buffer too small</text></svg>", width, height, height/2);
+        return;
+    }
+    
+    // Find min/max for scaling
+    float min_val = 0.0f;   // 0% minus some margin
+    float max_val = 100.0f;   // 100% plus some margin
+    // for (int i = 0; i < count; i++) {
+    //     if (history_a[i] < min_val) min_val = history_a[i];
+    //     if (history_a[i] > max_val) max_val = history_a[i];
+    // }
+    
+    // // Add some margin if min==max
+    // if (max_val - min_val < 0.001f) {
+    //     min_val -= 1.0f;
+    //     max_val += 1.0f;
+    // }
+    
+    float range = max_val - min_val;
+    if (range <= 0.0001f) range = 1.0f;
+    int margin = 5;
+    int chart_w = width - 2 * margin;
+    int chart_h = height - 2 * margin;
+    
+    // Build points string for polyline (allocate on heap to avoid large stack usage)
+    const int points_size = 1024;
+    char *points_a = malloc(points_size);
+    char *points_b = malloc(points_size);
+    char *points_c = malloc(points_size);
+    char *points_d = malloc(points_size);
+    if (!points_a || !points_b || !points_c || !points_d) {
+        if (points_a) free(points_a);
+        if (points_b) free(points_b);
+        if (points_c) free(points_c);
+        if (points_d) free(points_d);
+        snprintf(buf, buf_size, "<svg width='%d' height='%d'><text x='10' y='%d' "
+                 "fill='#888'>No memory for chart</text></svg>", width, height, height/2);
+        return;
+    }
+    int offset_a = 0;
+    int offset_b = 0;
+    int offset_c = 0;
+    int offset_d = 0;
+
+    points_a[0] = '\0'; points_b[0] = '\0'; points_c[0] = '\0'; points_d[0] = '\0';
+
+    for (int i = 0; i < count; i++) {
+        // Read from oldest to newest
+        int idx = (index - count + i + HISTORY_SIZE) % HISTORY_SIZE;
+        int x = margin + (i * chart_w) / (count > 1 ? count - 1 : 1);
+        int y = 0;
+
+        int remaining, ret;
+
+        y = margin + chart_h - (int)(((history_a[idx] - min_val) / range) * chart_h);
+        remaining = points_size - offset_a;
+        ret = snprintf(points_a + offset_a, remaining, "%d,%d ", x, y);
+        if (ret < 0) break;
+        if (ret >= remaining) { offset_a = points_size - 1; break; }
+        offset_a += ret;
+
+        y = margin + chart_h - (int)(((history_b[idx] - min_val) / range) * chart_h);
+        remaining = points_size - offset_b;
+        ret = snprintf(points_b + offset_b, remaining, "%d,%d ", x, y);
+        if (ret < 0) break;
+        if (ret >= remaining) { offset_b = points_size - 1; break; }
+        offset_b += ret;
+
+        y = margin + chart_h - (int)(((history_c[idx] - min_val) / range) * chart_h);
+        remaining = points_size - offset_c;
+        ret = snprintf(points_c + offset_c, remaining, "%d,%d ", x, y);
+        if (ret < 0) break;
+        if (ret >= remaining) { offset_c = points_size - 1; break; }
+        offset_c += ret;
+
+        y = margin + chart_h - (int)(((history_d[idx] - min_val) / range) * chart_h);
+        remaining = points_size - offset_d;
+        ret = snprintf(points_d + offset_d, remaining, "%d,%d ", x, y);
+        if (ret < 0) break;
+        if (ret >= remaining) { offset_d = points_size - 1; break; }
+        offset_d += ret;
+    }
+    
+    snprintf(buf, buf_size,
+        "<svg width='%d' height='%d' style='background:#232323;border-radius:8px;'>"
+        "<polyline points='%s' fill='none' stroke='#5778a4' stroke-width='2'/>"
+        "<polyline points='%s' fill='none' stroke='#e49444' stroke-width='2'/>"
+        "<polyline points='%s' fill='none' stroke='#d1615d' stroke-width='2'/>"
+        "<polyline points='%s' fill='none' stroke='#6a9f58' stroke-width='2'/>"
+        "<text x='%d' y='15' fill='#888' font-size='10'>%.1f</text>"
+        "<text x='%d' y='%d' fill='#888' font-size='10'>%.1f</text>"
+        "</svg>",
+        width, height, points_a, points_b, points_c, points_d,
+        width - 40, max_val,
+        width - 40, height - 5, min_val);
+
+    free(points_a); free(points_b); free(points_c); free(points_d);
+}
+
 // ============================================================================
 // HTML Page (embedded as string)
 // ============================================================================
@@ -89,21 +220,25 @@ static const char *html_page_template =
 "<style>"
 "* { box-sizing: border-box; }"
 "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; "
-"       margin: 0; padding: 20px; background: #1a1a2e; color: #eee; }"
-"h1 { color: #00d9ff; text-align: center; margin-bottom: 30px; }"
-"h2 { color: #00d9ff; margin-top: 0; border-bottom: 2px solid #00d9ff; padding-bottom: 10px; }"
+"       margin: 0; padding: 20px; background: #131313; color: #eee; }"
+"h1 { color: #cacaca; text-align: center; margin-bottom: 30px; }"
+"h2 { color: #cacaca; margin-top: 0; border-bottom: 2px solid #cacaca; padding-bottom: 10px; }"
 ".container { max-width: 1100px; margin: 0 auto; }"
-".card { background: #16213e; padding: 20px; margin: 15px 0; border-radius: 12px; "
+".card { background: #2c2c2c; padding: 20px; margin: 15px 0; border-radius: 12px; "
 "        box-shadow: 0 4px 6px rgba(0,0,0,0.3); }"
 ".grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }"
-".stat { background: #0f3460; padding: 10px; border-radius: 8px; text-align: center; }"
-".stat-value { font-size: 28px; font-weight: bold; color: #00d9ff; }"
-".stat-value-small { font-size: 18px; font-weight: bold; color: #00d9ff; }"
+".stat { background: #323232; padding: 10px; border-radius: 8px; text-align: center; }"
+".stat-value { font-size: 28px; font-weight: bold; color: #cacaca; }"
+".stat-value-tank1 { font-size: 28px; font-weight: bold; color: #5778a4; }"
+".stat-value-tank2 { font-size: 28px; font-weight: bold; color: #e49444; }"
+".stat-value-temperature { font-size: 28px; font-weight: bold; color: #d1615d; }"
+".stat-value-humidity { font-size: 28px; font-weight: bold; color: #6a9f58; }"
+".stat-value-small { font-size: 18px; font-weight: bold; color: #cacaca; }"
 ".stat-label { font-size: 12px; color: #888; text-transform: uppercase; margin-top: 5px; }"
 "table { width: 100%%; border-collapse: collapse; margin-top: 10px; }"
-"th, td { padding: 10px; text-align: left; border-bottom: 1px solid #0f3460; }"
-"th { background: #0f3460; color: #00d9ff; }"
-"tr:hover { background: #1a1a3e; }"
+"th, td { padding: 10px; text-align: left; border-bottom: 1px solid #232323; }"
+"th { background: #232323; color: #cacaca; }"
+"tr:hover { background: #131313; }"
 ".btn { background: #e94560; color: white; border: none; padding: 12px 24px; "
 "       border-radius: 6px; cursor: pointer; font-size: 14px; margin: 5px; "
 "       transition: background 0.3s; }"
@@ -112,30 +247,35 @@ static const char *html_page_template =
 ".btn-blue:hover { background: #00a8e8; }"
 ".file-input { margin: 10px 0; }"
 "input[type='file'] { color: #eee; }"
-".progress { width: 100%%; height: 20px; background: #0f3460; border-radius: 10px; "
+".progress { width: 100%%; height: 20px; background: #232323; border-radius: 10px; "
 "            overflow: hidden; margin: 10px 0; display: none; }"
-".progress-bar { height: 100%%; background: linear-gradient(90deg, #00d9ff, #e94560); "
+".progress-bar { height: 100%%; background: linear-gradient(90deg, #cacaca, #e94560); "
 "                width: 0%%; transition: width 0.3s; }"
 ".status { padding: 10px; border-radius: 6px; margin: 10px 0; display: none; }"
 ".status-success { background: #1b4332; color: #95d5b2; }"
 ".status-error { background: #641220; color: #f8d7da; }"
 "#refresh-indicator { position: fixed; top: 10px; right: 10px; padding: 5px 10px; "
-"                     background: #0f3460; border-radius: 4px; font-size: 12px; }"
+"                     background: #232323; border-radius: 4px; font-size: 12px; }"
 "</style>"
 "</head><body>"
 "<div class='container'>"
 "<h1>LN<sub>2</sub> CdF dashboard</h1>"
-"<div id='refresh-indicator'>Auto-refresh: <span id='countdown'>5</span>s</div>"
+"<div id='refresh-indicator'>Auto-refresh: <span id='countdown'>10</span>s</div>"
 
 "<div class='card'>"
-"<h2>Application Data</h2>"
+"<h2>Real time data</h2>"
 "<div class='grid'>"
-"<div class='stat'><div class='stat-value' id='var_a'>%.2f %%</div><div class='stat-label'>Tank 1</div></div>"
-"<div class='stat'><div class='stat-value' id='var_b'>%.2f %%</div><div class='stat-label'>Tank 2</div></div>"
-"<div class='stat'><div class='stat-value' id='var_c'>%.2f °C</div><div class='stat-label'>Temperature</div></div>"
-"<div class='stat'><div class='stat-value' id='var_d'>%.2f %%</div><div class='stat-label'>Humidity</div></div>"
+"<div class='stat'><div class='stat-value-tank1' id='var_a'>%.2f %%</div><div class='stat-label'>Tank 1</div></div>"
+"<div class='stat'><div class='stat-value-tank2' id='var_b'>%.2f %%</div><div class='stat-label'>Tank 2</div></div>"
+"<div class='stat'><div class='stat-value-temperature' id='var_c'>%.2f °C</div><div class='stat-label'>Temperature</div></div>"
+"<div class='stat'><div class='stat-value-humidity' id='var_d'>%.2f %%</div><div class='stat-label'>Humidity</div></div>"
 "<div class='stat'><div class='stat-value' id='var_e'>%s</div><div class='stat-label'>Current user</div></div>"
 "</div>"
+"</div>"
+
+"<div class='card'>"
+"<h2>History</h2>"
+"%s"  // chart_svg goes here
 "</div>"
 
 "<div class='card'>"
@@ -158,7 +298,7 @@ static const char *html_page_template =
 "</div>"
 
 "<div class='card'>"
-"<h2>Running Tasks</h2>"
+"<h2>Running tasks</h2>"
 "<table>"
 "<tr><th>Task Name</th><th>Priority</th><th>Stack Free</th><th>State</th></tr>"
 "%s"
@@ -166,7 +306,7 @@ static const char *html_page_template =
 "</div>"
 
 "<div class='card'>"
-"<h2>Firmware Update (OTA)</h2>"
+"<h2>Firmware update (OTA)</h2>"
 "<p>Select a .bin firmware file to upload:</p>"
 "<div class='file-input'>"
 "<input type='file' id='firmware' accept='.bin'>"
@@ -177,14 +317,14 @@ static const char *html_page_template =
 "</div>"
 
 "<div class='card'>"
-"<h2>System Control</h2>"
+"<h2>System control</h2>"
 "<button class='btn' onclick='rebootDevice()'>Reboot Device</button>"
 "</div>"
 
 "</div>"
 
 "<script>"
-"let countdown = 5;"
+"let countdown = 10;"
 "let refreshTimer = setInterval(function() {"
 "    countdown--;"
 "    document.getElementById('countdown').textContent = countdown;"
@@ -263,6 +403,18 @@ static const char* task_state_to_str(eTaskState state) {
 #endif
 
 static esp_err_t root_handler(httpd_req_t *req) {
+
+
+    // Generate chart SVG (allocate on heap to avoid large stack usage)
+    size_t chart_svg_size = 2560;
+    char *chart_svg = malloc(chart_svg_size);
+    if (chart_svg == NULL) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed for chart");
+        return ESP_FAIL;
+    }
+    generate_chart_svg(chart_svg, chart_svg_size, var_a_history, var_b_history, var_c_history, var_d_history,
+                        history_index, history_count, 1000+4*15, 200);  // width=1000 + margins for grid gaps
+
     // Gather system info
     size_t total_heap = heap_caps_get_total_size(MALLOC_CAP_8BIT);;
     size_t free_heap = esp_get_free_heap_size();
@@ -309,19 +461,26 @@ static esp_err_t root_handler(httpd_req_t *req) {
     format_bytes(free_dma, free_dma_str, sizeof(free_dma_str));
 
 
-    // Build task list HTML
-    char task_list[2048] = "";
+    // Build task list HTML (allocate on heap)
+    size_t task_list_size = 2048;
+    char *task_list = malloc(task_list_size);
+    if (task_list == NULL) {
+        free(chart_svg);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed for task list");
+        return ESP_FAIL;
+    }
+    task_list[0] = '\0';
     
 #if configUSE_TRACE_FACILITY
     int offset = 0;
     TaskStatus_t *task_array = pvPortMalloc(task_count * sizeof(TaskStatus_t));
     if (task_array != NULL) {
         UBaseType_t actual_count = uxTaskGetSystemState(task_array, task_count, NULL);
-        for (UBaseType_t i = 0; i < actual_count && offset < sizeof(task_list) - 150; i++) {
+        for (UBaseType_t i = 0; i < actual_count && offset < (int)task_list_size - 150; i++) {
             char stack_str[32];
             format_bytes(task_array[i].usStackHighWaterMark * sizeof(StackType_t), 
                         stack_str, sizeof(stack_str));
-            offset += snprintf(task_list + offset, sizeof(task_list) - offset,
+                offset += snprintf(task_list + offset, task_list_size - offset,
                 "<tr><td>%s</td><td>%lu</td><td>%s</td><td>%s</td></tr>",
                 task_array[i].pcTaskName,
                 (unsigned long)task_array[i].uxCurrentPriority,
@@ -331,7 +490,7 @@ static esp_err_t root_handler(httpd_req_t *req) {
         vPortFree(task_array);
     }
 #else
-    snprintf(task_list, sizeof(task_list), 
+    snprintf(task_list, task_list_size,
         "<tr><td colspan='4' style='text-align:center;color:#888;'>"
         "Enable configUSE_TRACE_FACILITY in sdkconfig for task details</td></tr>");
 #endif
@@ -346,12 +505,14 @@ static esp_err_t root_handler(httpd_req_t *req) {
 
     char *html = malloc(html_size);
     if (html == NULL) {
+        free(task_list);
+        free(chart_svg);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
         return ESP_FAIL;
     }
     
     int written = snprintf(html, html_size, html_page_template,
-        var_a, var_b, var_c, var_d, var_e,
+        var_a, var_b, var_c, var_d, var_e, chart_svg,
         total_heap_str, free_heap_str, min_heap_str, total_internal_str, free_internal_str, largest_free_block_str, total_dma_str, free_dma_str,
         (unsigned long)uptime_sec, (long)rssi, reset_reason_str, mac_str,
         (unsigned long)task_count,
@@ -367,6 +528,8 @@ static esp_err_t root_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html");
     httpd_resp_send(req, html, HTTPD_RESP_USE_STRLEN);
     free(html);
+    free(task_list);
+    free(chart_svg);
     
     // #pragma GCC diagnostic pop // restore warnings
     return ESP_OK;
