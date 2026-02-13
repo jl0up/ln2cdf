@@ -33,6 +33,9 @@ SHEET_NAME = "LN2 logs"  # Name of the sheet/tab to read from
 # Service account credentials JSON file path
 CREDENTIALS_FILE = "ln2-datalog-71cf9325868b.json"  # Download from Google Cloud Console
 
+# ESP32 direct access URL (for reference in dashboard)
+ESP32_URL = "http://192.168.122.246"
+
 # Update interval in milliseconds (300000 ms = 5 minutes)
 UPDATE_INTERVAL = 5 * 60 * 1000  # 5 minutes
 
@@ -252,12 +255,13 @@ def create_figure(df):
         )
         return fig
     
-    # Create subplots
+    # Create subplots: combine Tank 1 & Tank 2 in the top subplot
+    # Make the top subplot roughly twice the height of the others
     fig = make_subplots(
-        rows=4, cols=1,
+        rows=3, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.05,
-        # subplot_titles=('Tank 1 Level', 'Tank 2 Level', 'Temperature (°C)', 'Humidity'),
+        row_heights=[0.6, 0.2, 0.2],
     )
     
     # Tank 1
@@ -273,7 +277,7 @@ def create_figure(df):
         row=1, col=1
     )
     
-    # Tank 2
+    # Tank 2 (merged into the top subplot alongside Tank 1)
     fig.add_trace(
         go.Scattergl(
             x=df['Date/Time'],
@@ -283,7 +287,7 @@ def create_figure(df):
             line=dict(color='#ff7f0e', width=1.5),
             hovertemplate='%{x}<br>Tank 2: %{y:.1f}%<extra></extra>'
         ),
-        row=2, col=1
+        row=1, col=1
     )
     
     # Temperature
@@ -296,7 +300,7 @@ def create_figure(df):
             line=dict(color='#d62728', width=1.5),
             hovertemplate='%{x}<br>Temperature: %{y:.1f}°C<extra></extra>'
         ),
-        row=3, col=1
+        row=2, col=1
     )
     
     # Humidity
@@ -309,7 +313,7 @@ def create_figure(df):
             line=dict(color='#2ca02c', width=1.5),
             hovertemplate='%{x}<br>Humidity: %{y:.1f}%<extra></extra>'
         ),
-        row=4, col=1
+        row=3, col=1
     )
     
     fig.update_traces(marker_size=3, selector=dict(type='scattergl'))
@@ -323,8 +327,8 @@ def create_figure(df):
         end = region['end']
         color = USER_COLORS.get(user, "rgba(200, 200, 200, 0.15)")
         
-        # Add rectangle to each subplot (rows 1-4)
-        for row_num in range(1, 5):
+        # Add rectangle to each subplot (rows 1-3)
+        for row_num in range(1, 4):
             fig.add_vrect(
                 x0=start, x1=end,
                 fillcolor=color,
@@ -353,21 +357,20 @@ def create_figure(df):
         )
     
     # Update y-axes labels
-    fig.update_yaxes(title_text="Level (%)", row=1, col=1)
-    fig.update_yaxes(title_text="Level (%)", row=2, col=1)
-    fig.update_yaxes(title_text="Temp (°C)", row=3, col=1)
-    fig.update_yaxes(title_text="Humidity (%)", row=4, col=1)
-    
-    # Update x-axis label
-    fig.update_xaxes(title_text="Date/Time", row=4, col=1)
+    fig.update_yaxes(title_text="Level (%)", row=1, col=1, range=[0, 100])
+    fig.update_yaxes(title_text="Temp (°C)", row=2, col=1)
+    fig.update_yaxes(title_text="Humidity (%)", row=3, col=1)
+
+    # Update x-axis label (bottom subplot is now row 3)
+    fig.update_xaxes(title_text="Date/Time", row=3, col=1)
     
     # Update layout
     fig.update_layout(
         height=700,
-        title_text=f"Tank Monitoring Data - Live from Google Sheets (Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')})",
+        title_text=f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         hovermode='x unified',
         showlegend=True,
-        template='plotly_white',
+        template='seaborn',
         legend=dict(
             itemsizing='constant',
             orientation="h",
@@ -388,8 +391,15 @@ app = Dash(__name__)
 app.layout = html.Div([
     # Header with just title and status
     html.Div([
-        html.H1("Tank Monitoring Dashboard - Live from Google Sheets", 
-                style={'margin': 0, 'color': '#2c3e50'}),
+        html.H1([
+            'CdF LN2 tanks monitoring',
+        ], style={'margin': 0, 'color': '#2c3e50'}),
+        html.Div([
+            html.A('Link to Google Sheets', href=GOOGLE_SHEET_URL, target='_blank'),
+            '  |  ',
+            html.A('Link to ESP32 module', href=ESP32_URL, target='_blank')
+
+        ], style={'color': '#7f8c8d', 'marginTop': 5}),
         html.Div(id='status-text', 
                 style={'color': '#7f8c8d', 'marginTop': 5}),
         html.Div(f"Auto-refresh interval: {UPDATE_INTERVAL / 60000:.0f} minutes", 
@@ -427,7 +437,7 @@ app.layout = html.Div([
                         {'label': 'This year', 'value': 'year'},
                         {'label': 'Month:', 'value': 'month'}
                     ],
-                    value='7d',
+                    value='14d',
                     style={'fontSize': 12}
                 ),
                 dcc.Dropdown(
