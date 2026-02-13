@@ -20,6 +20,8 @@ from dash import Dash, dcc, html, Input, Output
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+import io
+
 
 # ==== CONFIGURATION ====
 # Google Sheets Configuration
@@ -507,7 +509,7 @@ def update_graph(data_json, range_value, month_value, liters_per_percent):
         liters_per_percent = LITERS_PER_PERCENT
 
     # Load full dataset
-    df = pd.read_json(data_json, orient='split')
+    df = pd.read_json(io.StringIO(data_json), orient='split')
     df['Date/Time'] = pd.to_datetime(df['Date/Time'])
     
     # Filter based on selection
