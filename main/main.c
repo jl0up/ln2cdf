@@ -111,7 +111,17 @@ void keypad_callback(const char* password, const char* message, bool success)
 
 void app_main(void)
 {
-    // char err_buf[ERR_BUF_SIZE] = "";
+    // Check if BOOT button is held - if so, skip app and wait for OTA
+    gpio_set_direction(GPIO_NUM_9, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(GPIO_NUM_9, GPIO_PULLUP_ONLY);
+    
+    if (gpio_get_level(GPIO_NUM_9) == 0) {
+        ESP_LOGW("SAFE", "Safe mode - skipping application");
+        // Just start WiFi and OTA server, nothing else
+        wifi_station_connect();
+        start_ota_server();
+        return;
+    }
 
     /*****************
      *** Chip info ***
