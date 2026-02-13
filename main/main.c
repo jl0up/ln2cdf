@@ -382,7 +382,7 @@ void app_main(void)
                 ) {
                 
                 // Send to Google Sheets via Google Apps Script
-                ESP_LOGI(TAG, "Level threshold reached: uploading to Google Sheet");
+                ESP_LOGD(TAG, "Level threshold reached: uploading to Google Sheet");
                 level_last_logged_0 = level_0;
                 level_last_logged_1 = level_1;                
                 // display_show_status("UPLOADING...", DISPLAY_COLOR_GREEN);

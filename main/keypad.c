@@ -213,7 +213,7 @@ static void keypad_task(void *arg)
                     key_event.key = current_key;
                     key_event.pressed = true;
                     xQueueSend(key_queue, &key_event, 0);
-                    ESP_LOGI(TAG, "Key pressed: %c", current_key);
+                    ESP_LOGD(TAG, "Key pressed: %c", current_key);
                 }
                 
                 last_key = current_key;
@@ -238,7 +238,7 @@ static void key_handler_task(void *arg)
     while (1) {
         if (xQueueReceive(key_queue, &key_event, portMAX_DELAY)) {
             if (key_event.pressed) {
-                ESP_LOGI(TAG, "Processing key press: %c", key_event.key);
+                ESP_LOGD(TAG, "Processing key press: %c", key_event.key);
                 
                 if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
 
@@ -280,7 +280,7 @@ static void handle_password_digit(char digit)
             password_callback_func("", "Entering password...", false);
         }
         
-        ESP_LOGI(TAG, "Password progress: %d/4 digits entered", password_index);
+        ESP_LOGD(TAG, "Password progress: %d/4 digits entered", password_index);
         
         // Stop the timer
         xTimerStop(password_timer, 0);

@@ -65,7 +65,7 @@ void print_sensor_data(void)
                                                    &temperature_raw, &temperature,
                                                    &humidity_raw, &humidity);
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Temperature: %.2f °C (raw: %lu), Humidity: %.2f %% (raw: %lu)", 
+        ESP_LOGD(TAG, "Temperature: %.2f °C (raw: %lu), Humidity: %.2f %% (raw: %lu)", 
                  temperature, temperature_raw, humidity, humidity_raw);
     } else {
         ESP_LOGE(TAG, "Failed to read sensor data: %s", esp_err_to_name(err));
@@ -80,7 +80,7 @@ void read_temperature_humidity(float* temperature, float* humidity){
                                                    &temperature_raw, temperature,
                                                    &humidity_raw, humidity);
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Temperature: %.2f °C (raw: %lu), Humidity: %.2f %% (raw: %lu)", 
+        ESP_LOGD(TAG, "Temperature: %.2f °C (raw: %lu), Humidity: %.2f %% (raw: %lu)", 
                  *temperature, temperature_raw, *humidity, humidity_raw);
     } else {
         ESP_LOGE(TAG, "Failed to read sensor data: %s", esp_err_to_name(err));
