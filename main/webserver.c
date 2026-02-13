@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include "esp_timer.h"
 #include <time.h>
 
@@ -39,6 +40,132 @@ static float var_d_history[HISTORY_SIZE];
 static int history_index = 0;
 static int history_count = 0;
 static int history_update_interval_s = 900;  // Default: 15 minutes
+
+// ======= Simple in-memory log capture =======
+// Keep a modest in-memory log buffer. Use atomic ops to avoid races.
+#define LOG_LINES 64
+#define LOG_LINE_LEN 192
+static char log_lines[LOG_LINES][LOG_LINE_LEN];
+static int log_index = 0;    // next write index (atomic incremented)
+static int log_count_lines = 0; // number of lines stored (<= LOG_LINES)
+
+static int (*orig_vprintf)(const char *fmt, va_list ap) = NULL;
+
+static void add_log_line(const char *line) {
+    if (!line) return;
+    // Reserve an index atomically
+    int idx = __atomic_fetch_add(&log_index, 1, __ATOMIC_RELAXED);
+    idx = idx % LOG_LINES;
+    // store truncated
+    strncpy(log_lines[idx], line, LOG_LINE_LEN - 1);
+    log_lines[idx][LOG_LINE_LEN - 1] = '\0';
+    // Increase count up to buffer size
+    int prev = __atomic_load_n(&log_count_lines, __ATOMIC_RELAXED);
+    if (prev < LOG_LINES) {
+        __atomic_fetch_add(&log_count_lines, 1, __ATOMIC_RELAXED);
+    }
+}
+
+// Minimal HTML escape for &, <, > (preserve newlines)
+static void html_escape(const char *in, char *out, size_t out_size) {
+    size_t oi = 0;
+    for (size_t i = 0; in[i] != '\0' && oi + 1 < out_size; i++) {
+        char c = in[i];
+        if (c == '&') {
+            const char *s = "&amp;";
+            for (size_t j = 0; s[j] != '\0' && oi + 1 < out_size; j++) out[oi++] = s[j];
+        } else if (c == '<') {
+            const char *s = "&lt;";
+            for (size_t j = 0; s[j] != '\0' && oi + 1 < out_size; j++) out[oi++] = s[j];
+        } else if (c == '>') {
+            const char *s = "&gt;";
+            for (size_t j = 0; s[j] != '\0' && oi + 1 < out_size; j++) out[oi++] = s[j];
+        } else {
+            out[oi++] = c;
+        }
+    }
+    out[oi] = '\0';
+}
+
+// Build logs HTML (raw text) into out buffer (caller must free)
+static void get_logs_html(char *out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = '\0';
+    if (log_count_lines == 0) {
+        strncpy(out, "No logs yet\n", out_size - 1);
+        out[out_size - 1] = '\0';
+        return;
+    }
+
+    int start = (log_index - log_count_lines + LOG_LINES) % LOG_LINES;
+    size_t off = 0;
+    char esc[LOG_LINE_LEN * 2];
+    for (int i = 0; i < log_count_lines; i++) {
+        const char *ln = log_lines[(start + i) % LOG_LINES];
+        html_escape(ln, esc, sizeof(esc));
+        size_t need = strlen(esc);
+        if (off + need + 2 >= out_size) break;
+        memcpy(out + off, esc, need);
+        off += need;
+        out[off++] = '\n';
+        out[off] = '\0';
+    }
+}
+
+static int capture_vprintf(const char *fmt, va_list ap) {
+    // Allocate buffer on heap to avoid stack overflow (don't use stack for large buffers!)
+    char *tmp = malloc(LOG_LINE_LEN);
+    if (!tmp) {
+        // Fallback: skip capture and call original vprintf
+        if (orig_vprintf) {
+            return orig_vprintf(fmt, ap);
+        } else {
+            return vprintf(fmt, ap);
+        }
+    }
+
+    va_list ap_copy;
+    va_copy(ap_copy, ap);
+    vsnprintf(tmp, LOG_LINE_LEN, fmt, ap_copy);
+    va_end(ap_copy);
+
+    // Split multi-line output into separate lines
+    char *p = tmp;
+    char *linebuf = malloc(LOG_LINE_LEN);
+    if (!linebuf) {
+        free(tmp);
+        if (orig_vprintf) {
+            return orig_vprintf(fmt, ap);
+        } else {
+            return vprintf(fmt, ap);
+        }
+    }
+
+    while (*p) {
+        char *nl = strchr(p, '\n');
+        if (nl) {
+            size_t len = nl - p;
+            if (len >= LOG_LINE_LEN) len = LOG_LINE_LEN - 1;
+            memcpy(linebuf, p, len);
+            linebuf[len] = '\0';
+            add_log_line(linebuf);
+            p = nl + 1;
+        } else {
+            add_log_line(p);
+            break;
+        }
+    }
+
+    free(linebuf);
+    free(tmp);
+
+    if (orig_vprintf) {
+        return orig_vprintf(fmt, ap);
+    } else {
+        return vprintf(fmt, ap);
+    }
+}
+// ======= end log capture =======
 
 int get_history_update_interval_s(void) {
     return history_update_interval_s;
@@ -345,6 +472,11 @@ static const char *html_page_template =
 "</div>"
 
 "<div class='card'>"
+"<h2>Logs</h2>"
+"<pre id='logbox' style='height:220px; overflow:auto; background:#0b0b0b; color:#eee; padding:10px; border-radius:6px;'>%s</pre>"
+"</div>"
+
+"<div class='card'>"
 "<h2>Running tasks</h2>"
 "<table>"
 "<tr><th>Task Name</th><th>Priority</th><th>Stack Free</th><th>State</th></tr>"
@@ -444,6 +576,18 @@ static const char *html_page_template =
 "    })"
 "    .catch(err => alert('Error: ' + err));"
 "}"
+""
+"// Auto-refresh logs every 2 seconds"
+"let logRefreshInterval = setInterval(function() {"
+"    fetch('/logs')"
+"    .then(response => response.text())"
+"    .then(text => {"
+"        const logbox = document.getElementById('logbox');"
+"        logbox.textContent = text;"
+"        logbox.scrollTop = logbox.scrollHeight;"
+"    })"
+"    .catch(err => console.log('Error fetching logs: ' + err));"
+"}, 2000);"
 "</script>"
 "</body></html>";
 
@@ -580,12 +724,25 @@ static esp_err_t root_handler(httpd_req_t *req) {
         return ESP_FAIL;
     }
     
+    // Prepare logs HTML
+    size_t logs_html_size = 4096;
+    char *logs_html = malloc(logs_html_size);
+    if (logs_html == NULL) {
+        free(task_list);
+        free(chart_svg);
+        free(html);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed for logs");
+        return ESP_FAIL;
+    }
+    get_logs_html(logs_html, logs_html_size);
+
     int written = snprintf(html, html_size, html_page_template,
         var_a, var_b, var_c, var_d, var_e, 
         get_history_update_interval_s(), datetime_now_str, chart_svg,
         total_heap_str, free_heap_str, min_heap_str, total_internal_str, free_internal_str, largest_free_block_str, total_dma_str, free_dma_str,
         (unsigned long)uptime_sec, (long)rssi, reset_reason_str, mac_str,
         (unsigned long)task_count,
+        logs_html,
         task_list);
     
     if (written < 0 || written >= (int)html_size) {
@@ -600,6 +757,7 @@ static esp_err_t root_handler(httpd_req_t *req) {
     free(html);
         free(task_list);
         free(chart_svg);
+        free(logs_html);
     
     // #pragma GCC diagnostic pop // restore warnings
     return ESP_OK;
@@ -686,6 +844,21 @@ static esp_err_t reboot_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+static esp_err_t logs_handler(httpd_req_t *req) {
+    // Return current logs as plain text
+    size_t logs_size = 4096;
+    char *logs_text = malloc(logs_size);
+    if (logs_text == NULL) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
+        return ESP_FAIL;
+    }
+    get_logs_html(logs_text, logs_size);
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_send(req, logs_text, HTTPD_RESP_USE_STRLEN);
+    free(logs_text);
+    return ESP_OK;
+}
+
 static esp_err_t update_interval_handler(httpd_req_t *req) {
     char buf[64] = "";
     if (httpd_req_recv(req, buf, sizeof(buf) - 1) > 0) {
@@ -708,6 +881,10 @@ httpd_handle_t start_webserver(void) {
     
     httpd_handle_t server = NULL;
     
+    // Install log capture hook so ESP_LOG* messages are captured into the web UI
+    // Now uses heap buffers instead of stack to avoid overflow
+    orig_vprintf = esp_log_set_vprintf(capture_vprintf);
+
     if (httpd_start(&server, &config) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start web server");
         return NULL;
@@ -745,6 +922,14 @@ httpd_handle_t start_webserver(void) {
         .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &interval_uri);
+    
+    httpd_uri_t logs_uri = {
+        .uri = "/logs",
+        .method = HTTP_GET,
+        .handler = logs_handler,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &logs_uri);
     
     ESP_LOGI(TAG, "Web server started successfully");
     return server;
