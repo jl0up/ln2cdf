@@ -48,7 +48,7 @@
 
  /* Send data to Google Script */
  esp_err_t send_to_google_script(float voltage0, float voltage1, int raw_value0, int raw_value1, char* user, float temperature, float humidity) {
-    char url[512];
+    char url[1024];
     
     // Get current time for timestamp
     time_t now;
