@@ -912,6 +912,14 @@ httpd_handle_t start_webserver(void) {
     config.stack_size = 8192;  // Increase stack for HTML generation
     config.max_uri_handlers = 8;
     
+    // Set socket timeouts to prevent connection exhaustion
+    // Server-side socket timeout: close idle connections after 30 seconds
+    config.recv_wait_timeout = 30;  // seconds - time to wait for data from client
+    config.send_wait_timeout = 30;  // seconds - time to wait before timing out on send
+    
+    // Limit concurrent connections to prevent socket exhaustion
+    config.max_open_sockets = 8;
+    
     httpd_handle_t server = NULL;
     
     // Install log capture hook so ESP_LOG* messages are captured into the web UI
