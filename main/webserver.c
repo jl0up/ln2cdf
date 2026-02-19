@@ -270,7 +270,7 @@ static void generate_chart_svg(char *buf, size_t buf_size, float *history_a, flo
     if (time_span_hours < 0.001) time_span_hours = 0.001;  // Avoid division by zero
     
     // Build points string for polyline (allocate on heap to avoid large stack usage)
-    const int points_size = 1024;
+    const int points_size = 4096;  // Increased to accommodate all history points
     char *points_a = malloc(points_size);
     char *points_b = malloc(points_size);
     char *points_c = malloc(points_size);
@@ -350,17 +350,50 @@ static void generate_chart_svg(char *buf, size_t buf_size, float *history_a, flo
             y_pos + 3, max_val - (i * (max_val - min_val) / 5));
     }
     
-    // Horizontal grid lines (every hour)
-    int max_hours = (int)time_span_hours + 1;
-    for (int h = 0; h <= max_hours; h++) {
-        double age = h;
-        int x_pos = margin + chart_w - (int)((age / time_span_hours) * chart_w);
+    // Horizontal grid lines (adaptive intervals: minutes for short spans, hours for long spans)
+    double interval = 1.0;  // Default to 1 hour
+    if (time_span_hours < 0.25) {
+        interval = 0.05;  // 3 minutes for very short spans
+    } else if (time_span_hours < 1.0) {
+        interval = 0.167;  // 10 minutes
+    } else if (time_span_hours < 2.0) {
+        interval = 0.5;  // 30 minutes
+    } else if (time_span_hours < 6.0) {
+        interval = 1.0;  // 1 hour
+    } else if (time_span_hours < 24.0) {
+        interval = 2.0;  // 2 hours
+    } else {
+        interval = 6.0;  // 6 hours for longer spans
+    }
+    
+    for (double h = 0; h <= time_span_hours + interval; h += interval) {
+        int x_pos = margin + chart_w - (int)((h / time_span_hours) * chart_w);
         if (x_pos >= margin && x_pos <= margin + chart_w) {
-            grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
-                "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
-                "<text x='%d' y='%d' fill='#888' font-size='9'>-%dh</text>",
-                x_pos, margin, x_pos, margin + chart_h,
-                x_pos - 10, margin + chart_h + 15, h);
+            // Format label based on interval
+            const char *fmt = "";
+            if (interval < 0.1) {
+                fmt = "-%dm";  // Show minutes
+                int min = (int)(h * 60);
+                grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
+                    "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
+                    "<text x='%d' y='%d' fill='#888' font-size='9'>%dm</text>",
+                    x_pos, margin, x_pos, margin + chart_h,
+                    x_pos - 10, margin + chart_h + 15, min);
+            } else if (interval < 0.5) {
+                int min = (int)(h * 60);
+                grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
+                    "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
+                    "<text x='%d' y='%d' fill='#888' font-size='9'>-%dm</text>",
+                    x_pos, margin, x_pos, margin + chart_h,
+                    x_pos - 12, margin + chart_h + 15, min);
+            } else {
+                int hr = (int)h;
+                grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
+                    "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
+                    "<text x='%d' y='%d' fill='#888' font-size='9'>-%dh</text>",
+                    x_pos, margin, x_pos, margin + chart_h,
+                    x_pos - 10, margin + chart_h + 15, hr);
+            }
         }
     }
     
