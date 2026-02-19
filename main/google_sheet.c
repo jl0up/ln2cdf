@@ -54,7 +54,7 @@ static const char *TAG = "google_sheet.c";
 
  /* Send data to Google Script with automatic retry */
  esp_err_t send_to_google_script(float voltage0, float voltage1, int raw_value0, int raw_value1, char* user, float temperature, float humidity) {
-    char url[1024];
+    char url[2048];  // Increased from 1024 to safely accommodate long user identifiers
     
     // Get current time for timestamp
     time_t now;
@@ -62,9 +62,15 @@ static const char *TAG = "google_sheet.c";
     
     // Construct URL with query parameters
     // Note: URL encoding would be better but we're keeping it simple
-    snprintf(url, sizeof(url), 
+    int url_len = snprintf(url, sizeof(url), 
         "https://script.google.com/macros/s/%s/exec?timestamp=%ju&voltage0=%.4f&voltage1=%.4f&raw_value0=%d&raw_value1=%d&user=%s&temperature=%.1f&humidity=%.1f",
         GOOGLE_SCRIPT_ID, now, voltage0, voltage1, raw_value0, raw_value1, user, temperature, humidity);
+    
+    // Safeguard against URL buffer overflow
+    if (url_len < 0 || url_len >= (int)sizeof(url)) {
+        ESP_LOGE(TAG, "URL construction failed or exceeded buffer (%d bytes)", url_len);
+        return ESP_FAIL;
+    }
     
     ESP_LOGI(TAG, "Sending data to Google Script");
     
@@ -75,7 +81,7 @@ static const char *TAG = "google_sheet.c";
         .event_handler = http_event_handler,
         .crt_bundle_attach = esp_crt_bundle_attach,  // Use ESP's certificate bundle for TLS
         .timeout_ms = 10000,                         // 10 second timeout
-        .buffer_size_tx = 1024,
+        .buffer_size_tx = 2048,                      // Increased from 1024 to accommodate full URL + HTTP headers
     };
     
     // Retry loop
