@@ -1,6 +1,7 @@
 #include "keypad.h"
 #include "esp_log.h"
 #include <string.h>
+#include "esp_task_wdt.h"
 
 static const char *TAG = "KEYPAD";
 
@@ -195,6 +196,8 @@ static char scan_keypad(void)
 
 static void keypad_task(void *arg)
 {
+    esp_task_wdt_add(NULL); // watch this task with Task Watchdog Timer
+
     char current_key;
     key_event_t key_event;
     uint32_t current_time;
@@ -231,6 +234,8 @@ static void keypad_task(void *arg)
 
 static void key_handler_task(void *arg)
 {
+    esp_task_wdt_add(NULL); // watch this task with Task Watchdog Timer
+    
     key_event_t key_event;
     
     ESP_LOGI(TAG, "Key handler task started");

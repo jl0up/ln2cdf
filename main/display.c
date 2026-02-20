@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
+#include "esp_task_wdt.h"
 
 static const char *TAG = "DISPLAY";
 
@@ -624,6 +625,8 @@ static void lcd_dma_buffer_allocate(size_t buffer_size)
 
 static void lcd_lvgl_task(void *arg)
 {
+    esp_task_wdt_add(NULL); // watch this task with Task Watchdog Timer
+    
     ESP_LOGI(TAG, "LVGL task started");
 
     while (1)

@@ -146,6 +146,18 @@ void app_main(void)
     char datetime_boot_str[64];
 
     /**************************************
+     *** Initialize Task Watchdog Timer (after all init, before main loop)
+     *** 120 second timeout, panic (reboot) on timeout
+     **************************************/
+    esp_task_wdt_config_t wdt_config = {
+        .timeout_ms = 120000,  // 120 seconds
+        .idle_core_mask = 0,  // Don't watch idle tasks
+        .trigger_panic = true,
+    };
+    esp_task_wdt_init(&wdt_config);
+    esp_task_wdt_add(NULL);  // Add current task (app_main task)
+    
+    /**************************************
      *** Enable OTA update by http POST ***
      **************************************/
     //start_ota_server();
@@ -278,16 +290,6 @@ void app_main(void)
     datetime_last_upload = datetime_boot - MAX_UPLOAD_INTERVAL_SECONDS; // force upload on first cycle
     datetime_last_login = datetime_boot;  // initialize last login time
 
-
-    // Initialize Task Watchdog Timer (after all init, before main loop)
-    // 30 second timeout, panic (reboot) on timeout
-    esp_task_wdt_config_t wdt_config = {
-        .timeout_ms = 30000,
-        .idle_core_mask = 0,  // Don't watch idle tasks
-        .trigger_panic = true,
-    };
-    esp_task_wdt_init(&wdt_config);
-    esp_task_wdt_add(NULL);  // Add current task (app_main task)
 
     // Reading ADC in loop
     unsigned int idx = 0;
