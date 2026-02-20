@@ -113,16 +113,11 @@ static void get_logs_html(char *out, size_t out_size) {
 }
 
 static int capture_vprintf(const char *fmt, va_list ap) {
-    // Allocate buffer on heap to avoid stack overflow (don't use stack for large buffers!)
-    char *tmp = malloc(LOG_LINE_LEN);
-    if (!tmp) {
-        // Fallback: skip capture and call original vprintf
-        if (orig_vprintf) {
-            return orig_vprintf(fmt, ap);
-        } else {
-            return vprintf(fmt, ap);
-        }
-    }
+    // Use stack buffers instead of malloc to avoid heap fragmentation during boot
+    // This is safe because LOG_LINE_LEN is only 192 bytes, and we're on the main task
+    // which has a reasonably sized stack
+    char tmp[LOG_LINE_LEN];
+    char linebuf[LOG_LINE_LEN];
 
     va_list ap_copy;
     va_copy(ap_copy, ap);
@@ -131,15 +126,6 @@ static int capture_vprintf(const char *fmt, va_list ap) {
 
     // Split multi-line output into separate lines
     char *p = tmp;
-    char *linebuf = malloc(LOG_LINE_LEN);
-    if (!linebuf) {
-        free(tmp);
-        if (orig_vprintf) {
-            return orig_vprintf(fmt, ap);
-        } else {
-            return vprintf(fmt, ap);
-        }
-    }
 
     while (*p) {
         char *nl = strchr(p, '\n');
@@ -151,13 +137,14 @@ static int capture_vprintf(const char *fmt, va_list ap) {
             add_log_line(linebuf);
             p = nl + 1;
         } else {
-            add_log_line(p);
+            strncpy(linebuf, p, LOG_LINE_LEN - 1);
+            linebuf[LOG_LINE_LEN - 1] = '\0';
+            if (linebuf[0] != '\0') {  // Only add non-empty lines
+                add_log_line(linebuf);
+            }
             break;
         }
     }
-
-    free(linebuf);
-    free(tmp);
 
     if (orig_vprintf) {
         return orig_vprintf(fmt, ap);
@@ -923,11 +910,16 @@ httpd_handle_t start_webserver(void) {
     httpd_handle_t server = NULL;
     
     // Install log capture hook so ESP_LOG* messages are captured into the web UI
-    // Now uses heap buffers instead of stack to avoid overflow
+    // Now uses STACK buffers instead of heap to avoid fragmentation
+    // This is safe because LOG_LINE_LEN=192 is small, and the main task has plenty of stack
     orig_vprintf = esp_log_set_vprintf(capture_vprintf);
 
     if (httpd_start(&server, &config) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start web server");
+        // Restore original vprintf if we had set it
+        if (orig_vprintf) {
+            esp_log_set_vprintf(orig_vprintf);
+        }
         return NULL;
     }
     
