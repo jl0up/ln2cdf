@@ -365,10 +365,14 @@ void app_main(void)
             strftime(datetime_str, sizeof(datetime_str), "%Y/%m/%d %H:%M:%S", localtime(&datetime_current) );
             display_show_datetime(datetime_str);
 
-            // 
-            if ( (strcmp(last_identifier, DEFAULT_IDENTIFIER) != 0) && (difftime(datetime_current, datetime_last_login) > DELAY_BEFORE_LOGOUT_SECONDS) ) {
-                // strcpy(last_identifier, DEFAULT_IDENTIFIER);
-                keypad_callback(DEFAULT_PASSWORD, DEFAULT_IDENTIFIER, false);
+            // Auto-logout after timeout
+            if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                if ( (strcmp(last_identifier, DEFAULT_IDENTIFIER) != 0) && (difftime(datetime_current, datetime_last_login) > DELAY_BEFORE_LOGOUT_SECONDS) ) {
+                    xSemaphoreGive(keypad_mutex);
+                    keypad_callback(DEFAULT_PASSWORD, DEFAULT_IDENTIFIER, false);
+                } else {
+                    xSemaphoreGive(keypad_mutex);
+                }
             }
 
             // Read temperature from DS18B20 sensors
@@ -387,13 +391,21 @@ void app_main(void)
 
 
 
+            // Prepare for upload check - need to safely read last_identifier
+            char last_identifier_snapshot[MAX_IDENTIFIER_LENGTH + 1] = DEFAULT_IDENTIFIER;
+            if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                strncpy(last_identifier_snapshot, last_identifier, MAX_IDENTIFIER_LENGTH);
+                last_identifier_snapshot[MAX_IDENTIFIER_LENGTH] = '\0';
+                xSemaphoreGive(keypad_mutex);
+            }
+            
             if (    ( (difftime(datetime_current, datetime_last_upload) > MIN_UPLOAD_INTERVAL_SECONDS) && 
                       ( (level_0 > level_last_logged_0 + UPLOAD_THRESHOLD_PERCENT_0) ||  
                         (level_0 < level_last_logged_0 - UPLOAD_THRESHOLD_PERCENT_0) ||  
                         (level_1 > level_last_logged_1 + UPLOAD_THRESHOLD_PERCENT_1) ||  
                         (level_1 < level_last_logged_1 - UPLOAD_THRESHOLD_PERCENT_1) ) )
-                ||  (strcmp(last_identifier_uploaded, "") == 0)
-                ||  (strcmp(last_identifier_uploaded, last_identifier) != 0)
+                ||  (last_identifier_uploaded[0] == '\0')  // Changed from strcmp
+                ||  (strcmp(last_identifier_uploaded, last_identifier_snapshot) != 0)
                 ||  (difftime(datetime_current, datetime_last_upload) > MAX_UPLOAD_INTERVAL_SECONDS)
                 ) {
                 
@@ -407,29 +419,34 @@ void app_main(void)
                             adc.voltage_avg[0][1] / 1000.,
                             adc.adc_raw_avg[0][0],
                             adc.adc_raw_avg[0][1],
-                            last_identifier,
+                            last_identifier_snapshot,
                             temperature,
                             humidity
                         )
                         != ESP_OK) {
                     ESP_LOGE(TAG, "Failed to send data to Google Sheets");
                     // display_show_status("UPLOAD FAILED", DISPLAY_COLOR_RED);
-                    strncpy(last_identifier_uploaded, "", sizeof(last_identifier_uploaded));
+                    last_identifier_uploaded[0] = '\0';  // Clear the string
                 }
                 else {
                     ESP_LOGI(TAG, "Data successfully sent to Google Sheets");
-                    // char msg[128];
-                    // strftime(datetime_str, sizeof(datetime_str), "%d %b %H:%M:%S", localtime(&datetime) );
                     strftime(datetime_str, sizeof(datetime_str), "Upload %d %b %H:%M:%S", localtime(&datetime_current) );
-                    // snprintf(msg, sizeof(msg), "Uploaded: %s", datetime_str);
                     display_show_last_upload(datetime_str);
-                    strncpy(last_identifier_uploaded, last_identifier, sizeof(last_identifier_uploaded));
+                    strncpy(last_identifier_uploaded, last_identifier_snapshot, sizeof(last_identifier_uploaded) - 1);
+                    last_identifier_uploaded[sizeof(last_identifier_uploaded) - 1] = '\0';
                     datetime_last_upload = datetime_current;
                 }
             }
         }
 
-        webpage_update(level_0, level_1, temperature, humidity, last_identifier);
+        // Safely read last_identifier for web display
+        char last_identifier_for_display[MAX_IDENTIFIER_LENGTH + 1] = DEFAULT_IDENTIFIER;
+        if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            strncpy(last_identifier_for_display, last_identifier, MAX_IDENTIFIER_LENGTH);
+            last_identifier_for_display[MAX_IDENTIFIER_LENGTH] = '\0';
+            xSemaphoreGive(keypad_mutex);
+        }
+        webpage_update(level_0, level_1, temperature, humidity, last_identifier_for_display);
         vTaskDelay(pdMS_TO_TICKS(WAIT_TIME_MS));
     }
 

@@ -43,6 +43,9 @@ typedef struct {
 // Global variable to track current user (initialized in keypad.c)
 extern char last_identifier[MAX_IDENTIFIER_LENGTH + 1];
 
+// Mutex for protecting last_identifier access across tasks
+extern SemaphoreHandle_t keypad_mutex;
+
 // Public functions prototypes
 void keypad_init(void);
 void keypad_start_tasks(void);

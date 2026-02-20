@@ -305,7 +305,6 @@ void display_show_login_result(const char *identifier, bool success)
         {
             lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_BLUE), 0); // Blue
             lv_label_set_text(label_status, "LOGGING OUT");
-            strcpy(last_identifier, identifier);
         }
         else 
         {
@@ -318,22 +317,34 @@ void display_show_login_result(const char *identifier, bool success)
             {
                 lv_obj_set_style_text_color(label_status, lv_palette_main(LV_PALETTE_GREEN), 0); // Green
                 lv_label_set_text(label_status, "WELCOME");
-                strcpy(last_identifier, identifier);
             }
         }
 
         xSemaphoreGive(lvgl_mutex);
     }
 
-    // Store identifier for timer callback
-    strncpy(pending_identifier, last_identifier, sizeof(pending_identifier) - 1);
+    // Store identifier for timer callback and update last_identifier safely
+    // CRITICAL: Use keypad_mutex to protect last_identifier from race condition
+    if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        strncpy(last_identifier, identifier, MAX_IDENTIFIER_LENGTH);
+        last_identifier[MAX_IDENTIFIER_LENGTH] = '\0';
+        strncpy(pending_identifier, last_identifier, sizeof(pending_identifier) - 1);
+        pending_identifier[sizeof(pending_identifier) - 1] = '\0';
+        xSemaphoreGive(keypad_mutex);
+    }
     
     // Create timer if needed, then start it
     if (login_result_timer == NULL) {
         login_result_timer = xTimerCreate("login_timer", pdMS_TO_TICKS(1000), 
                                           pdFALSE, NULL, login_result_timer_callback);
     }
-    xTimerReset(login_result_timer, 0);
+    
+    // Only reset timer if it was successfully created
+    if (login_result_timer != NULL) {
+        xTimerReset(login_result_timer, 0);
+    } else {
+        ESP_LOGE(TAG, "Failed to create/reset login result timer");
+    }
 }
 
 

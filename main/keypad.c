@@ -5,8 +5,8 @@
 
 static const char *TAG = "KEYPAD";
 
-// Semaphore for keypad thread safety
-static SemaphoreHandle_t keypad_mutex = NULL;
+// Semaphore for keypad thread safety (exposed to other modules via keypad.h)
+SemaphoreHandle_t keypad_mutex = NULL;
 
 
 // Keypad matrix
