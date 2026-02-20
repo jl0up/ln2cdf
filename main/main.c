@@ -157,11 +157,25 @@ void app_main(void)
     esp_task_wdt_init(&wdt_config);
     esp_task_wdt_add(NULL);  // Add current task (app_main task)
     
-    /**************************************
-     *** Enable OTA update by http POST ***
-     **************************************/
-    //start_ota_server();
-    start_webserver();
+    /**********************************************
+     *** Enable full web server (try twice), or ***
+     *** simple OTA update by http POST only ******
+     **********************************************/
+    if (start_webserver() == NULL) {
+        ESP_LOGE(TAG, "Failed to start webserver, retrying once...");
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        if (start_webserver() == NULL) {
+            ESP_LOGW(TAG, "Webserver failed to start, continuing with simple OTA server");
+            start_ota_server();
+            // wait indefinitely - OTA server runs in its own task
+            while (1) {
+                // make sure watchdog doesn't reset the system while waiting for OTA
+                // should be OK with a watchdog timeout of 120 seconds
+                esp_task_wdt_reset();
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+        }
+    }
 
     // /**********************************
     //  *** 1-wire temperature sensors ***
