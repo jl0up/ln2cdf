@@ -6,8 +6,9 @@
 static const char *TAG = "google_sheet.c";
 
 // Retry configuration
-#define GOOGLE_SCRIPT_MAX_RETRIES 2          // Try up to 3 times total (initial + 2 retries)
-#define GOOGLE_SCRIPT_RETRY_DELAY_MS 1000    // Wait 1 second between retries
+#define GOOGLE_SCRIPT_MAX_RETRIES 1          // Try up to 2 times total (initial + 1 retry) - reduce for faster failure detection
+#define GOOGLE_SCRIPT_RETRY_DELAY_MS 2000    // Wait 2 seconds between retries to allow sockets to fully close
+#define GOOGLE_SCRIPT_INIT_FAIL_DELAY_MS 500 // Delay when init fails to let resources settle
 
  /* HTTP Event Handler */
  static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
@@ -80,8 +81,9 @@ static const char *TAG = "google_sheet.c";
         .method = HTTP_METHOD_GET,
         .event_handler = http_event_handler,
         .crt_bundle_attach = esp_crt_bundle_attach,  // Use ESP's certificate bundle for TLS
-        .timeout_ms = 10000,                         // 10 second timeout
+        .timeout_ms = 5000,                          // Reduced from 10s to 5s - faster timeout with retries
         .buffer_size_tx = 2048,                      // Increased from 1024 to accommodate full URL + HTTP headers
+        .keep_alive_enable = false,                  // Disable keep-alive to force socket close after request
     };
     
     // Retry loop
@@ -94,8 +96,10 @@ static const char *TAG = "google_sheet.c";
         // Initialize the HTTP client
         esp_http_client_handle_t client = esp_http_client_init(&config);
         if (client == NULL) {
-            ESP_LOGW(TAG, "HTTP client init failed (attempt %d/%d)", 
+            ESP_LOGW(TAG, "HTTP client init failed (attempt %d/%d), waiting for resources...", 
                     retry_count + 1, GOOGLE_SCRIPT_MAX_RETRIES + 1);
+            // If init fails, add extra delay to allow socket resources to settle
+            vTaskDelay(pdMS_TO_TICKS(GOOGLE_SCRIPT_INIT_FAIL_DELAY_MS));
             goto retry;
         }
         
@@ -121,6 +125,8 @@ static const char *TAG = "google_sheet.c";
             ESP_LOGW(TAG, "HTTP GET request failed (attempt %d/%d): %s",
                     retry_count + 1, GOOGLE_SCRIPT_MAX_RETRIES + 1, esp_err_to_name(err));
             esp_http_client_cleanup(client);
+            // Add delay to let TCP socket fully close
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
         
         // Prepare for retry

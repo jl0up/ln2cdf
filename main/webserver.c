@@ -905,7 +905,8 @@ httpd_handle_t start_webserver(void) {
     config.send_wait_timeout = 30;  // seconds - time to wait before timing out on send
     
     // Limit concurrent connections to prevent socket exhaustion
-    config.max_open_sockets = 7;
+    // Increased from 7 to 15 to accommodate webserver + upload connections
+    config.max_open_sockets = 15;
     
     httpd_handle_t server = NULL;
     

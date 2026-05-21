@@ -399,18 +399,23 @@ void app_main(void)
                 xSemaphoreGiveRecursive(keypad_mutex);
             }
             
-            if (    ( (difftime(datetime_current, datetime_last_upload) > MIN_UPLOAD_INTERVAL_SECONDS) && 
+            // Check if WiFi is connected before attempting upload
+            const char* current_ip = get_current_ip_string();
+            bool wifi_connected = (current_ip != NULL && strlen(current_ip) > 0);
+            
+            if (    wifi_connected && 
+                    ( (difftime(datetime_current, datetime_last_upload) > MIN_UPLOAD_INTERVAL_SECONDS) && 
                       ( (level_0 > level_last_logged_0 + UPLOAD_THRESHOLD_PERCENT_0) ||  
                         (level_0 < level_last_logged_0 - UPLOAD_THRESHOLD_PERCENT_0) ||  
                         (level_1 > level_last_logged_1 + UPLOAD_THRESHOLD_PERCENT_1) ||  
                         (level_1 < level_last_logged_1 - UPLOAD_THRESHOLD_PERCENT_1) ) )
-                ||  (last_identifier_uploaded[0] == '\0')  // Changed from strcmp
-                ||  (strcmp(last_identifier_uploaded, last_identifier_snapshot) != 0)
-                ||  (difftime(datetime_current, datetime_last_upload) > MAX_UPLOAD_INTERVAL_SECONDS)
+                ||  (wifi_connected && (last_identifier_uploaded[0] == '\0'))  // Changed from strcmp
+                ||  (wifi_connected && (strcmp(last_identifier_uploaded, last_identifier_snapshot) != 0))
+                ||  (wifi_connected && (difftime(datetime_current, datetime_last_upload) > MAX_UPLOAD_INTERVAL_SECONDS))
                 ) {
                 
                 // Send to Google Sheets via Google Apps Script
-                ESP_LOGD(TAG, "Level threshold reached: uploading to Google Sheet");
+                ESP_LOGI(TAG, "Upload conditions met, WiFi connected to %s - uploading to Google Sheet", current_ip);
                 level_last_logged_0 = level_0;
                 level_last_logged_1 = level_1;                
                 // display_show_status("UPLOADING...", DISPLAY_COLOR_GREEN);
@@ -436,6 +441,9 @@ void app_main(void)
                     last_identifier_uploaded[sizeof(last_identifier_uploaded) - 1] = '\0';
                     datetime_last_upload = datetime_current;
                 }
+            } else if (!wifi_connected) {
+                // WiFi not connected - skip upload and wait for next cycle
+                ESP_LOGD(TAG, "WiFi not connected, skipping upload");
             }
         }
 
