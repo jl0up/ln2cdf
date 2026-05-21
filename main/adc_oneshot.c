@@ -24,48 +24,24 @@ void adc_oneshot_init(adc_t* adc)
     adc->adc1_cali_chan1_handle = NULL;
     adc->do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN0, EXAMPLE_ADC_ATTEN, &(adc->adc1_cali_chan0_handle));
     adc->do_calibration1_chan1 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN1, EXAMPLE_ADC_ATTEN, &(adc->adc1_cali_chan1_handle));
-    
-#if EXAMPLE_USE_ADC2
-    //-------------ADC2 Init---------------//
-    // adc->init_config2.unit_id = ADC_UNIT_2;
-    // adc->init_config2.ulp_mode = ADC_ULP_MODE_DISABLE;
-
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&(adc->init_config2), &(adc->adc2_handle)));
-
-    //-------------ADC2 Calibration Init---------------//
-    adc->adc2_cali_handle = NULL;
-    adc->do_calibration2 = example_adc_calibration_init(ADC_UNIT_2, EXAMPLE_ADC2_CHAN0, EXAMPLE_ADC_ATTEN, &(adc->adc2_cali_handle));
-
-    //-------------ADC2 Config---------------//
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc->adc2_handle, EXAMPLE_ADC2_CHAN0, &(adc->config)));
-#endif  //#if EXAMPLE_USE_ADC2
 }
 
 
 void adc_oneshot_get(adc_t* adc)
 {
-        ESP_ERROR_CHECK(adc_oneshot_read(adc->adc1_handle, EXAMPLE_ADC1_CHAN0, &(adc->adc_raw[0][0])));
-        // ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc->adc_raw[0][0]);
-        if (adc->do_calibration1_chan0) {
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage((adc->adc1_cali_chan0_handle), adc->adc_raw[0][0], &(adc->voltage[0][0])));
-            // ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc->voltage[0][0]);
-        }
+    ESP_ERROR_CHECK(adc_oneshot_read(adc->adc1_handle, EXAMPLE_ADC1_CHAN0, &(adc->adc_raw[0])));
+    // ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc->adc_raw[0]);
+    if (adc->do_calibration1_chan0) {
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage((adc->adc1_cali_chan0_handle), adc->adc_raw[0], &(adc->voltage[0])));
+        // ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc->voltage[0]);
+    }
 
-        ESP_ERROR_CHECK(adc_oneshot_read(adc->adc1_handle, EXAMPLE_ADC1_CHAN1, &(adc->adc_raw[0][1])));
-        // ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN1, adc->adc_raw[0][1]);
-        if (adc->do_calibration1_chan1) {
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc->adc1_cali_chan1_handle, adc->adc_raw[0][1], &(adc->voltage[0][1])));
-            // ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN1, adc->voltage[0][1]);
-        }
-
-#if EXAMPLE_USE_ADC2
-        ESP_ERROR_CHECK(adc_oneshot_read(adc->adc2_handle, EXAMPLE_ADC2_CHAN0, &(adc->adc_raw[1][0])));
-        // ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_2 + 1, EXAMPLE_ADC2_CHAN0, adc->adc_raw[1][0]);
-        if (adc->do_calibration2) {
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc->adc2_cali_handle, adc->adc_raw[1][0], &(adc->voltage[1][0])));
-            // ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_2 + 1, EXAMPLE_ADC2_CHAN0, adc->voltage[1][0]);
-        }
-#endif  //#if EXAMPLE_USE_ADC2
+    ESP_ERROR_CHECK(adc_oneshot_read(adc->adc1_handle, EXAMPLE_ADC1_CHAN1, &(adc->adc_raw[1])));
+    // ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN1, adc->adc_raw[1]);
+    if (adc->do_calibration1_chan1) {
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc->adc1_cali_chan1_handle, adc->adc_raw[1], &(adc->voltage[1])));
+        // ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN1, adc->voltage[1]);
+    }
 }
 
 
@@ -81,12 +57,6 @@ void adc_oneshot_teardown(adc_t* adc)
         example_adc_calibration_deinit(adc->adc1_cali_chan1_handle);
     }
 
-#if EXAMPLE_USE_ADC2
-    ESP_ERROR_CHECK(adc_oneshot_del_unit(adc->adc2_handle));
-    if (adc->do_calibration2) {
-        example_adc_calibration_deinit(adc->adc2_cali_handle);
-    }
-#endif //#if EXAMPLE_USE_ADC2
 }
 
 /*---------------------------------------------------------------

@@ -275,6 +275,31 @@ void app_main(void)
     float level_last_logged_0 = -100.;
     float level_last_logged_1 = -100.;
 
+    /************************************************************
+     *** Measurement buffer for offline uploads (WiFi fallback) ***
+     ************************************************************/
+    typedef struct {
+        float voltage0;
+        float voltage1;
+        int raw_value0;
+        int raw_value1;
+        char identifier[MAX_IDENTIFIER_LENGTH + 1];
+        float temperature;
+        float humidity;
+        time_t timestamp;
+    } Measurement;
+
+    static Measurement measurements[MEMORY_LENGTH];
+    static int buffer_write_idx = 0;  // Circular write position
+    static int buffer_count = 0;      // Number of valid measurements in buffer
+    static SemaphoreHandle_t buffer_mutex = NULL;
+
+    // Initialize buffer mutex
+    buffer_mutex = xSemaphoreCreateRecursiveMutex();
+    if (buffer_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create buffer mutex");
+        return;
+    }
 
     /****************
      *** ADC read ***
@@ -315,47 +340,41 @@ void app_main(void)
 
         adc_oneshot_get(&adc);
 
-        // *err_buf = '\0';
-        for(int j=0;j<N_ADC_UNITS;j++){
+        // for(int j=0;j<N_ADC_UNITS;j++){
             for(int i=0;i<N_ADC_CHANNELS;i++){
                 // add sample to circular memory
-                adc.adc_raw_mem[j][i][idx%N_AVG] = adc.adc_raw[j][i];
-                adc.voltage_mem[j][i][idx%N_AVG] = adc.voltage[j][i];
+                adc.adc_raw_mem[i][idx%N_AVG] = adc.adc_raw[i];
+                adc.voltage_mem[i][idx%N_AVG] = adc.voltage[i];
                 // removed detailed logs to prevent memory problems
                 // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "ADC%d.%d: ", j+1, i);
                 // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "%4d", adc.adc_raw[j][i]);
                 // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%4d mV)", adc.voltage[j][i]);
                 // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " | ");
             }
-        }
-        // ESP_LOGI(TAG, "%s", err_buf);
-
+        // }
+ 
         if (idx%N_AVG == 0){
             idx = 0; // reset index to avoid overflow
             ESP_LOGD(TAG, "AVERAGING");
             
-            // *err_buf = '\0';
-            for(int j=0;j<N_ADC_UNITS;j++){
+            // for(int j=0;j<N_ADC_UNITS;j++){
                 for(int i=0;i<N_ADC_CHANNELS;i++){
                     // apply a median filter
-                    qsort(adc.adc_raw_mem[j][i], N_AVG, sizeof(int), compare);
-                    qsort(adc.voltage_mem[j][i], N_AVG, sizeof(int), compare);
-                    // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "ADC%d.%d: ", j+1, i);
-                    // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, "median=%4d", adc.adc_raw_mem[j][i][N_AVG/2]);
-                    // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%4d mV)", adc.voltage_mem[j][i][N_AVG/2]);
+                    qsort(adc.adc_raw_mem[i], N_AVG, sizeof(int), compare);
+                    qsort(adc.voltage_mem[i], N_AVG, sizeof(int), compare);
                     // calculate average excluding median-filtered outliers
-                    adc.adc_raw_avg[j][i] = average_adc_raw(adc.adc_raw_mem[j][i], N_AVG);
-                    adc.voltage_avg[j][i] = average_voltage(adc.voltage_mem[j][i], N_AVG);
+                    adc.adc_raw_avg[i] = average_adc_raw(adc.adc_raw_mem[i], N_AVG);
+                    adc.voltage_avg[i] = average_voltage(adc.voltage_mem[i], N_AVG);
                     // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, ", avg=%6.1f", adc.adc_raw_avg[j][i]);
                     // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " (%6.1f mV)", adc.voltage_avg[j][i]);
                     // snprintf(err_buf + strlen(err_buf), ERR_BUF_SIZE, " | ");
                 }
-            }
+            // }
             // ESP_LOGI(TAG, "%s", err_buf);
 
     
-            level_0 = 100 * (adc.voltage_avg[0][0] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
-            level_1 = 100 * (adc.voltage_avg[0][1] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
+            level_0 = 100 * (adc.voltage_avg[0] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
+            level_1 = 100 * (adc.voltage_avg[1] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
             
             display_show_levels(level_0, level_1);
 
@@ -403,47 +422,101 @@ void app_main(void)
             const char* current_ip = get_current_ip_string();
             bool wifi_connected = (current_ip != NULL && strlen(current_ip) > 0);
             
-            if (    wifi_connected && 
-                    ( (difftime(datetime_current, datetime_last_upload) > MIN_UPLOAD_INTERVAL_SECONDS) && 
+            if (    ( (difftime(datetime_current, datetime_last_upload) > MIN_UPLOAD_INTERVAL_SECONDS) && 
                       ( (level_0 > level_last_logged_0 + UPLOAD_THRESHOLD_PERCENT_0) ||  
                         (level_0 < level_last_logged_0 - UPLOAD_THRESHOLD_PERCENT_0) ||  
                         (level_1 > level_last_logged_1 + UPLOAD_THRESHOLD_PERCENT_1) ||  
                         (level_1 < level_last_logged_1 - UPLOAD_THRESHOLD_PERCENT_1) ) )
-                ||  (wifi_connected && (last_identifier_uploaded[0] == '\0'))  // Changed from strcmp
-                ||  (wifi_connected && (strcmp(last_identifier_uploaded, last_identifier_snapshot) != 0))
-                ||  (wifi_connected && (difftime(datetime_current, datetime_last_upload) > MAX_UPLOAD_INTERVAL_SECONDS))
+                ||  (last_identifier_uploaded[0] == '\0')  // Changed from strcmp
+                ||  (strcmp(last_identifier_uploaded, last_identifier_snapshot) != 0)
+                ||  (difftime(datetime_current, datetime_last_upload) > MAX_UPLOAD_INTERVAL_SECONDS)
                 ) {
                 
-                // Send to Google Sheets via Google Apps Script
-                ESP_LOGI(TAG, "Upload conditions met, WiFi connected to %s - uploading to Google Sheet", current_ip);
-                level_last_logged_0 = level_0;
-                level_last_logged_1 = level_1;                
-                // display_show_status("UPLOADING...", DISPLAY_COLOR_GREEN);
-                if (send_to_google_script(
-                            adc.voltage_avg[0][0] / 1000.,
-                            adc.voltage_avg[0][1] / 1000.,
-                            adc.adc_raw_avg[0][0],
-                            adc.adc_raw_avg[0][1],
-                            last_identifier_snapshot,
-                            temperature,
-                            humidity
-                        )
-                        != ESP_OK) {
-                    ESP_LOGE(TAG, "Failed to send data to Google Sheets");
-                    // display_show_status("UPLOAD FAILED", DISPLAY_COLOR_RED);
-                    last_identifier_uploaded[0] = '\0';  // Clear the string
+                // Current measurement to upload
+                float voltage0 = adc.voltage_avg[0] / 1000.;
+                float voltage1 = adc.voltage_avg[1] / 1000.;
+                int raw0 = adc.adc_raw_avg[0];
+                int raw1 = adc.adc_raw_avg[1];
+                
+                if (!wifi_connected) {
+                    // WiFi is down - store measurement in circular buffer
+                    if (xSemaphoreTakeRecursive(buffer_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                        measurements[buffer_write_idx].voltage0 = voltage0;
+                        measurements[buffer_write_idx].voltage1 = voltage1;
+                        measurements[buffer_write_idx].raw_value0 = raw0;
+                        measurements[buffer_write_idx].raw_value1 = raw1;
+                        measurements[buffer_write_idx].temperature = temperature;
+                        measurements[buffer_write_idx].humidity = humidity;
+                        measurements[buffer_write_idx].timestamp = datetime_current;
+                        strncpy(measurements[buffer_write_idx].identifier, last_identifier_snapshot, MAX_IDENTIFIER_LENGTH);
+                        measurements[buffer_write_idx].identifier[MAX_IDENTIFIER_LENGTH] = '\0';
+                        
+                        buffer_write_idx = (buffer_write_idx + 1) % MEMORY_LENGTH;
+                        if (buffer_count < MEMORY_LENGTH) {
+                            buffer_count++;
+                        }
+                        
+                        ESP_LOGD(TAG, "WiFi unavailable - measurement %d buffered (total: %d/%d)", 
+                                 buffer_write_idx, buffer_count, MEMORY_LENGTH);
+                        xSemaphoreGiveRecursive(buffer_mutex);
+                    }
+                } else {
+                    // WiFi is connected - upload current measurement
+                    ESP_LOGI(TAG, "Upload conditions met, WiFi connected to %s - uploading to Google Sheet", current_ip);
+                    level_last_logged_0 = level_0;
+                    level_last_logged_1 = level_1;
+                    
+                    if (send_to_google_script(voltage0, voltage1, raw0, raw1, 
+                                           last_identifier_snapshot, temperature, humidity) == ESP_OK) {
+                        ESP_LOGI(TAG, "Data successfully sent to Google Sheets");
+                        strftime(datetime_str, sizeof(datetime_str), "Upload %d %b %H:%M:%S", localtime(&datetime_current) );
+                        display_show_last_upload(datetime_str);
+                        strncpy(last_identifier_uploaded, last_identifier_snapshot, sizeof(last_identifier_uploaded) - 1);
+                        last_identifier_uploaded[sizeof(last_identifier_uploaded) - 1] = '\0';
+                        datetime_last_upload = datetime_current;
+                    } else {
+                        ESP_LOGE(TAG, "Failed to send data to Google Sheets");
+                        last_identifier_uploaded[0] = '\0';  // Clear the string
+                    }
                 }
-                else {
-                    ESP_LOGI(TAG, "Data successfully sent to Google Sheets");
-                    strftime(datetime_str, sizeof(datetime_str), "Upload %d %b %H:%M:%S", localtime(&datetime_current) );
-                    display_show_last_upload(datetime_str);
-                    strncpy(last_identifier_uploaded, last_identifier_snapshot, sizeof(last_identifier_uploaded) - 1);
-                    last_identifier_uploaded[sizeof(last_identifier_uploaded) - 1] = '\0';
-                    datetime_last_upload = datetime_current;
+            }
+            
+            // If WiFi is connected and we have buffered measurements, try to upload them
+            if (wifi_connected && xSemaphoreTakeRecursive(buffer_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                int measurements_to_upload = buffer_count;
+                if (measurements_to_upload > 0) {
+                    ESP_LOGI(TAG, "Uploading %d buffered measurements", measurements_to_upload);
                 }
-            } else if (!wifi_connected) {
-                // WiFi not connected - skip upload and wait for next cycle
-                ESP_LOGD(TAG, "WiFi not connected, skipping upload");
+                
+                int read_idx = (buffer_write_idx - buffer_count + MEMORY_LENGTH) % MEMORY_LENGTH;
+                int uploaded = 0;
+                
+                for (int i = 0; i < measurements_to_upload; i++) {
+                    if (send_to_google_script(measurements[read_idx].voltage0,
+                                            measurements[read_idx].voltage1,
+                                            measurements[read_idx].raw_value0,
+                                            measurements[read_idx].raw_value1,
+                                            measurements[read_idx].identifier,
+                                            measurements[read_idx].temperature,
+                                            measurements[read_idx].humidity) == ESP_OK) {
+                        uploaded++;
+                        read_idx = (read_idx + 1) % MEMORY_LENGTH;
+                    } else {
+                        ESP_LOGE(TAG, "Failed to upload buffered measurement %d/%d", i + 1, measurements_to_upload);
+                        break;  // Stop on first failure to preserve order
+                    }
+                }
+                
+                // Remove successfully uploaded measurements from buffer
+                if (uploaded > 0) {
+                    buffer_count -= uploaded;
+                    if (buffer_count == 0) {
+                        buffer_write_idx = 0;  // Reset on empty
+                    }
+                    ESP_LOGI(TAG, "Successfully uploaded %d buffered measurements (%d remaining)", uploaded, buffer_count);
+                }
+                
+                xSemaphoreGiveRecursive(buffer_mutex);
             }
         }
 

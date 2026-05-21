@@ -10,37 +10,23 @@
 #include "esp_adc/adc_cali_scheme.h"
 
 #define N_AVG 37  //number of ADC samples to average MAX ~27 because of memory limits
-#define N_ADC_UNITS 1
+#define MEMORY_LENGTH 24  // Buffer for storing measurements when WiFi is unavailable
 #define N_ADC_CHANNELS 2
 
 /*---------------------------------------------------------------
         ADC General Macros
 ---------------------------------------------------------------*/
 //ADC1 Channels
-#if CONFIG_IDF_TARGET_ESP32
 #define EXAMPLE_ADC1_CHAN0          ADC_CHANNEL_4
 #define EXAMPLE_ADC1_CHAN1          ADC_CHANNEL_5
-#else
-#define EXAMPLE_ADC1_CHAN0          ADC_CHANNEL_4
-#define EXAMPLE_ADC1_CHAN1          ADC_CHANNEL_5
-#endif
 
 #if (SOC_ADC_PERIPH_NUM >= 2) && !CONFIG_IDF_TARGET_ESP32C3
 /**
  * On ESP32C3, ADC2 is no longer supported, due to its HW limitation.
  * Search for errata on espressif website for more details.
  */
-#define EXAMPLE_USE_ADC2            0
 #endif
 
-#if EXAMPLE_USE_ADC2
-//ADC2 Channels
-#if CONFIG_IDF_TARGET_ESP32
-#define EXAMPLE_ADC2_CHAN0          ADC_CHANNEL_0
-#else
-#define EXAMPLE_ADC2_CHAN0          ADC_CHANNEL_0
-#endif
-#endif  //#if EXAMPLE_USE_ADC2
 
 #define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_0
 #define EXAMPLE_ADC_BITWIDTH        ADC_BITWIDTH_DEFAULT
@@ -59,12 +45,12 @@ typedef struct {
     bool do_calibration1_chan0;
     bool do_calibration1_chan1;
     bool do_calibration2;
-    int adc_raw[N_ADC_UNITS][N_ADC_CHANNELS];
-    int voltage[N_ADC_UNITS][N_ADC_CHANNELS];
-    int adc_raw_mem[N_ADC_UNITS][N_ADC_CHANNELS][N_AVG];
-    int voltage_mem[N_ADC_UNITS][N_ADC_CHANNELS][N_AVG];
-    float adc_raw_avg[N_ADC_UNITS][N_ADC_CHANNELS];
-    float voltage_avg[N_ADC_UNITS][N_ADC_CHANNELS];
+    int adc_raw[N_ADC_CHANNELS];  // Current raw ADC values
+    int voltage[N_ADC_CHANNELS];  // Current calibrated voltage values
+    int adc_raw_mem[N_ADC_CHANNELS][N_AVG];  // Memory for averaging
+    int voltage_mem[N_ADC_CHANNELS][N_AVG];  // Memory for averaging
+    float adc_raw_avg[N_ADC_CHANNELS];  // Averaged raw values
+    float voltage_avg[N_ADC_CHANNELS];  // Averaged voltage values
 } adc_t;
 
 void adc_oneshot_init(adc_t *adc);
