@@ -72,10 +72,11 @@ char last_identifier[MAX_IDENTIFIER_LENGTH + 1] = DEFAULT_IDENTIFIER;
 void keypad_init(void)
 {
 
-    // Create mutex for keypad
-    keypad_mutex = xSemaphoreCreateMutex();
+    // Create RECURSIVE mutex for keypad - recursive because key_handler_task holds it
+    // while calling keypad_callback which calls display_show_login_result which also takes the mutex
+    keypad_mutex = xSemaphoreCreateRecursiveMutex();
     if (keypad_mutex == NULL) {
-        ESP_LOGE(TAG, "Failed to create keypad mutex");
+        ESP_LOGE(TAG, "Failed to create keypad recursive mutex");
         return;
     }
 
@@ -103,9 +104,13 @@ void keypad_init(void)
 
 void keypad_start_tasks(void)
 {
-    xTaskCreate(keypad_task, "keypad_task", 2048, NULL, 5, NULL);
-    xTaskCreate(key_handler_task, "key_handler_task", 2048, NULL, 4, NULL);
-    ESP_LOGI(TAG, "Keypad tasks started");
+    // Increased stack sizes due to nested callback chain that includes LVGL operations
+    // key_handler_task holds keypad_mutex while calling keypad_callback which calls display_show_login_result
+    // which performs LVGL operations - LVGL is known to use significant stack
+    // Even 8KB was causing stack overflow with LVGL. Now using 12KB + 16KB.
+    xTaskCreate(keypad_task, "keypad_task", 8192, NULL, 5, NULL);
+    xTaskCreate(key_handler_task, "key_handler_task", 16384, NULL, 4, NULL);
+    ESP_LOGI(TAG, "Keypad tasks started with increased stack sizes (8KB + 16KB)");
 }
 
 const char* keypad_lookup_identifier(const char* password)
@@ -245,7 +250,7 @@ static void key_handler_task(void *arg)
             if (key_event.pressed) {
                 ESP_LOGD(TAG, "Processing key press: %c", key_event.key);
                 
-                if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+                if (xSemaphoreTakeRecursive(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
 
                     // Handle password input
                     if (key_event.key >= '0' && key_event.key <= '9') {
@@ -268,7 +273,7 @@ static void key_handler_task(void *arg)
                         ESP_LOGW(TAG, "Invalid key for password input: %c", key_event.key);
                     }
 
-                    xSemaphoreGive(keypad_mutex);
+                    xSemaphoreGiveRecursive(keypad_mutex);
                 }
             }
         }
@@ -340,7 +345,7 @@ static void password_timeout_callback(TimerHandle_t xTimer)
 {
     ESP_LOGW(TAG, "Password timeout");
     
-    if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (xSemaphoreTakeRecursive(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         
         if (password_callback_func) {
             password_callback_func("", "TIMEOUT", false);
@@ -350,6 +355,6 @@ static void password_timeout_callback(TimerHandle_t xTimer)
         memset(current_password, 0, sizeof(current_password));
         password_index = 0;
 
-        xSemaphoreGive(keypad_mutex);
+        xSemaphoreGiveRecursive(keypad_mutex);
     }
 }

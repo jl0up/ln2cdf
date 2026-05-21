@@ -324,13 +324,14 @@ void display_show_login_result(const char *identifier, bool success)
     }
 
     // Store identifier for timer callback and update last_identifier safely
-    // CRITICAL: Use keypad_mutex to protect last_identifier from race condition
-    if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    // Use RECURSIVE mutex because this may be called while keypad_mutex is already held
+    // (when key_handler_task calls keypad_callback which calls this function)
+    if (xSemaphoreTakeRecursive(keypad_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         strncpy(last_identifier, identifier, MAX_IDENTIFIER_LENGTH);
         last_identifier[MAX_IDENTIFIER_LENGTH] = '\0';
         strncpy(pending_identifier, last_identifier, sizeof(pending_identifier) - 1);
         pending_identifier[sizeof(pending_identifier) - 1] = '\0';
-        xSemaphoreGive(keypad_mutex);
+        xSemaphoreGiveRecursive(keypad_mutex);
     }
     
     // Create timer if needed, then start it

@@ -366,12 +366,12 @@ void app_main(void)
             display_show_datetime(datetime_str);
 
             // Auto-logout after timeout
-            if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            if (xSemaphoreTakeRecursive(keypad_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                 if ( (strcmp(last_identifier, DEFAULT_IDENTIFIER) != 0) && (difftime(datetime_current, datetime_last_login) > DELAY_BEFORE_LOGOUT_SECONDS) ) {
-                    xSemaphoreGive(keypad_mutex);
+                    xSemaphoreGiveRecursive(keypad_mutex);
                     keypad_callback(DEFAULT_PASSWORD, DEFAULT_IDENTIFIER, false);
                 } else {
-                    xSemaphoreGive(keypad_mutex);
+                    xSemaphoreGiveRecursive(keypad_mutex);
                 }
             }
 
@@ -393,10 +393,10 @@ void app_main(void)
 
             // Prepare for upload check - need to safely read last_identifier
             char last_identifier_snapshot[MAX_IDENTIFIER_LENGTH + 1] = DEFAULT_IDENTIFIER;
-            if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            if (xSemaphoreTakeRecursive(keypad_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
                 strncpy(last_identifier_snapshot, last_identifier, MAX_IDENTIFIER_LENGTH);
                 last_identifier_snapshot[MAX_IDENTIFIER_LENGTH] = '\0';
-                xSemaphoreGive(keypad_mutex);
+                xSemaphoreGiveRecursive(keypad_mutex);
             }
             
             if (    ( (difftime(datetime_current, datetime_last_upload) > MIN_UPLOAD_INTERVAL_SECONDS) && 
@@ -441,10 +441,10 @@ void app_main(void)
 
         // Safely read last_identifier for web display
         char last_identifier_for_display[MAX_IDENTIFIER_LENGTH + 1] = DEFAULT_IDENTIFIER;
-        if (xSemaphoreTake(keypad_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        if (xSemaphoreTakeRecursive(keypad_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             strncpy(last_identifier_for_display, last_identifier, MAX_IDENTIFIER_LENGTH);
             last_identifier_for_display[MAX_IDENTIFIER_LENGTH] = '\0';
-            xSemaphoreGive(keypad_mutex);
+            xSemaphoreGiveRecursive(keypad_mutex);
         }
         webpage_update(level_0, level_1, temperature, humidity, last_identifier_for_display);
         vTaskDelay(pdMS_TO_TICKS(WAIT_TIME_MS));
