@@ -26,21 +26,28 @@ void adc_oneshot_init(adc_t* adc)
     adc->do_calibration1_chan1 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN1, EXAMPLE_ADC_ATTEN, &(adc->adc1_cali_chan1_handle));
 }
 
-
 void adc_oneshot_get(adc_t* adc)
 {
-    ESP_ERROR_CHECK(adc_oneshot_read(adc->adc1_handle, EXAMPLE_ADC1_CHAN0, &(adc->adc_raw[0])));
-    // ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc->adc_raw[0]);
-    if (adc->do_calibration1_chan0) {
-        ESP_ERROR_CHECK(adc_cali_raw_to_voltage((adc->adc1_cali_chan0_handle), adc->adc_raw[0], &(adc->voltage[0])));
-        // ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc->voltage[0]);
+    esp_err_t err;
+
+    err = adc_oneshot_read(adc->adc1_handle, EXAMPLE_ADC1_CHAN0, &(adc->adc_raw[0]));
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "ADC1 chan0 read failed: %s (keeping last value)", esp_err_to_name(err));
+    } else if (adc->do_calibration1_chan0) {
+        err = adc_cali_raw_to_voltage(adc->adc1_cali_chan0_handle, adc->adc_raw[0], &(adc->voltage[0]));
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "ADC1 chan0 cali failed: %s (keeping last value)", esp_err_to_name(err));
+        }
     }
 
-    ESP_ERROR_CHECK(adc_oneshot_read(adc->adc1_handle, EXAMPLE_ADC1_CHAN1, &(adc->adc_raw[1])));
-    // ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN1, adc->adc_raw[1]);
-    if (adc->do_calibration1_chan1) {
-        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc->adc1_cali_chan1_handle, adc->adc_raw[1], &(adc->voltage[1])));
-        // ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN1, adc->voltage[1]);
+    err = adc_oneshot_read(adc->adc1_handle, EXAMPLE_ADC1_CHAN1, &(adc->adc_raw[1]));
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "ADC1 chan1 read failed: %s (keeping last value)", esp_err_to_name(err));
+    } else if (adc->do_calibration1_chan1) {
+        err = adc_cali_raw_to_voltage(adc->adc1_cali_chan1_handle, adc->adc_raw[1], &(adc->voltage[1]));
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "ADC1 chan1 cali failed: %s (keeping last value)", esp_err_to_name(err));
+        }
     }
 }
 
