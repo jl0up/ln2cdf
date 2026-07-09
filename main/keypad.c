@@ -1,7 +1,7 @@
 #include "keypad.h"
 #include "esp_log.h"
 #include <string.h>
-// #include "esp_task_wdt.h"
+#include "esp_task_wdt.h"
 
 static const char *TAG = "KEYPAD";
 
@@ -211,7 +211,7 @@ static void keypad_task(void *arg)
     
     while (1) {
         esp_task_wdt_reset();
-        
+
         current_key = scan_keypad();
         current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
         
