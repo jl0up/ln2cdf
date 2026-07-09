@@ -10,7 +10,7 @@
 #include "esp_adc/adc_cali_scheme.h"
 
 #define N_AVG 37  //number of ADC samples to average MAX ~27 because of memory limits
-#define MEMORY_LENGTH 24  // Buffer for storing measurements when WiFi is unavailable
+#define MEMORY_LENGTH 256  // Buffer for storing measurements when WiFi is unavailable
 #define N_ADC_CHANNELS 2
 
 /*---------------------------------------------------------------
