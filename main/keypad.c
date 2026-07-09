@@ -201,7 +201,7 @@ static char scan_keypad(void)
 
 static void keypad_task(void *arg)
 {
-    // esp_task_wdt_add(NULL); // watch this task with Task Watchdog Timer
+    esp_task_wdt_add(NULL); // watch this task with Task Watchdog Timer
 
     char current_key;
     key_event_t key_event;
@@ -210,6 +210,8 @@ static void keypad_task(void *arg)
     ESP_LOGI(TAG, "Keypad task started");
     
     while (1) {
+        esp_task_wdt_reset();
+        
         current_key = scan_keypad();
         current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
         

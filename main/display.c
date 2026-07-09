@@ -637,12 +637,13 @@ static void lcd_dma_buffer_allocate(size_t buffer_size)
 
 static void lcd_lvgl_task(void *arg)
 {
-    // esp_task_wdt_add(NULL); // watch this task with Task Watchdog Timer
+    esp_task_wdt_add(NULL); // watch this task with Task Watchdog Timer
     
     ESP_LOGI(TAG, "LVGL task started");
 
     while (1)
     {
+        esp_task_wdt_reset();
         if (xSemaphoreTake(lvgl_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
             lv_tick_inc(10);
             lv_timer_handler();
