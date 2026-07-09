@@ -905,8 +905,9 @@ httpd_handle_t start_webserver(void) {
     config.send_wait_timeout = 30;  // seconds - time to wait before timing out on send
     
     // Limit concurrent connections to prevent socket exhaustion
-    // Increased from 7 to 15 to accommodate webserver + upload connections
-    config.max_open_sockets = 15;
+    //  7 is max with default CONFIG_LWIP_MAX_SOCKETS = 10 in menuconfig. Increase if needed in menuconfig
+    // and below, considering CONFIG_LWIP_MAX_SOCKETS >= max_open_sockets + 3
+    config.max_open_sockets = 7;
     
     httpd_handle_t server = NULL;
     
