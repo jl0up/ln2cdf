@@ -477,6 +477,27 @@ void app_main(void)
                     } else {
                         ESP_LOGE(TAG, "Failed to send data to Google Sheets");
                         last_identifier_uploaded[0] = '\0';  // Clear the string
+                        // WiFi is connected but upload failed - store measurement in circular buffer
+                        if (xSemaphoreTakeRecursive(buffer_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+                            measurements[buffer_write_idx].voltage0 = voltage0;
+                            measurements[buffer_write_idx].voltage1 = voltage1;
+                            measurements[buffer_write_idx].raw_value0 = raw0;
+                            measurements[buffer_write_idx].raw_value1 = raw1;
+                            measurements[buffer_write_idx].temperature = temperature;
+                            measurements[buffer_write_idx].humidity = humidity;
+                            measurements[buffer_write_idx].timestamp = datetime_current;
+                            strncpy(measurements[buffer_write_idx].identifier, last_identifier_snapshot, MAX_IDENTIFIER_LENGTH);
+                            measurements[buffer_write_idx].identifier[MAX_IDENTIFIER_LENGTH] = '\0';
+                            
+                            buffer_write_idx = (buffer_write_idx + 1) % MEMORY_LENGTH;
+                            if (buffer_count < MEMORY_LENGTH) {
+                                buffer_count++;
+                            }
+                            
+                            ESP_LOGD(TAG, "Upload to Google Sheet unavailable - measurement %d buffered (total: %d/%d)", 
+                                    buffer_write_idx, buffer_count, MEMORY_LENGTH);
+                            xSemaphoreGiveRecursive(buffer_mutex);
+                        }
                     }
                 }
             }
