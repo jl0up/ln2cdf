@@ -377,6 +377,7 @@ void app_main(void)
             level_1 = 100 * (adc.voltage_avg[1] / R_EFF - I_EMPTY) / ( I_FULL - I_EMPTY );
             
             display_show_levels(level_0, level_1);
+            webpage_record_history(level_0, level_1, temperature, humidity);   // add this
 
             display_show_ip(get_current_ip_string());
 

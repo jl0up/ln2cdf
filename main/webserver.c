@@ -15,10 +15,15 @@
 #include <stdarg.h>
 #include "esp_timer.h"
 #include <time.h>
+#include <math.h>
 
-#define HISTORY_SIZE 64
+#define HISTORY_SIZE 512              // how many points we retain (tune for RAM)
+#define CHART_MAX_DISPLAY_POINTS 64  // how many markers we actually draw (bounds SVG buffer size)
+#define CHART_SVG_BUF_SIZE (CHART_MAX_DISPLAY_POINTS * 4 * 64 + 4096)  // ~36KB for the defaults above
+#define HTML_BUF_SIZE 40960  // ≈ 8KB template + 20KB chart + 4KB logs + 2KB tasklist + margin
+#define CHART_THRESHOLD_PERCENT_0 1.5 // minimum percentage change on tank 0 to trigger upload unless identifier changed
+#define CHART_THRESHOLD_PERCENT_1 0.5 // minimum percentage change an tank 1 to trigger upload unless identifier changed
 
-// If you have delayed_restart.h, include it; otherwise we define a simple version
 // #include "delayed_restart.h"
 
 static const char *TAG = "webserver";
@@ -32,14 +37,20 @@ static float var_c = 0.0f;
 static float var_d = 0.0f;
 static char var_e[256] = "not set";
 
-static int64_t history_timestamps[HISTORY_SIZE];  // microseconds since boot
+static time_t history_timestamps[HISTORY_SIZE];   // real wall-clock time, not esp_timer ticks
 static float var_a_history[HISTORY_SIZE];
 static float var_b_history[HISTORY_SIZE];
 static float var_c_history[HISTORY_SIZE];
 static float var_d_history[HISTORY_SIZE];
 static int history_index = 0;
 static int history_count = 0;
-static int history_update_interval_s = 900;  // Default: 15 minutes
+
+static int history_update_interval_s = 1800;  // Default: 30 minutes, but forces when CHART_THRESHOLD_PERCENT_0 or CHART_THRESHOLD_PERCENT_1 exceeded
+
+static char chart_svg_buf[CHART_SVG_BUF_SIZE];
+static char task_list_buf[2048];
+static char logs_buf[4096];
+static char html_buf[32768];
 
 // ======= Simple in-memory log capture =======
 // Keep a modest in-memory log buffer. Use atomic ops to avoid races.
@@ -174,7 +185,28 @@ void webpage_update(float a, float b, float c, float d, const char *e) {
         strncpy(var_e, e, sizeof(var_e) - 1);
         var_e[sizeof(var_e) - 1] = '\0';
     }
-    history_timestamps[history_index] = esp_timer_get_time();
+}
+
+void webpage_record_history(float a, float b, float c, float d) {
+    static time_t last_record_time = 0;
+    time_t now = time(NULL);
+
+    bool bypass_data = false;
+
+    if (last_record_time != 0 && (difftime(now, last_record_time) < get_history_update_interval_s())) {
+        bypass_data = true;  // not enough time elapsed since last recorded point
+    }
+    if (fabs(a - var_a_history[(history_index - 1 + HISTORY_SIZE) % HISTORY_SIZE]) > CHART_THRESHOLD_PERCENT_0
+     || fabs(b - var_b_history[(history_index - 1 + HISTORY_SIZE) % HISTORY_SIZE]) > CHART_THRESHOLD_PERCENT_1) {
+        bypass_data = false; // force record if either tank level changed more than threshold since last recorded point
+    }
+    if (bypass_data) {
+        return;
+    }
+    
+    last_record_time = now;
+
+    history_timestamps[history_index] = now;
     var_a_history[history_index] = a;
     var_b_history[history_index] = b;
     var_c_history[history_index] = c;
@@ -225,177 +257,90 @@ static void delayed_restart_local(void) {
     xTaskCreate(restart_task, "restart", 2048, NULL, 5, NULL);
 }
 
-static void generate_chart_svg(char *buf, size_t buf_size, float *history_a, float *history_b, float *history_c, float *history_d,
-                                int64_t *history_ts, int index, int count, int width, int height, int64_t current_time_us) {
+static const char* generate_chart_svg(float *history_a, float *history_b, float *history_c, float *history_d,
+                                       time_t *history_ts, int index, int count, int width, int height) {
+    char *buf = chart_svg_buf;
+    size_t buf_size = CHART_SVG_BUF_SIZE;
+    size_t off = 0;
+
     if (count == 0) {
         snprintf(buf, buf_size, "<svg width='%d' height='%d'><text x='10' y='%d' "
-                 "fill='#888'>No data yet</text></svg>", width, height, height/2);
-        return;
+                 "fill='#888'>No data yet</text></svg>", width, height, height / 2);
+        return buf;
     }
-    
-    if (buf_size < 2560) {
-        snprintf(buf, buf_size, "<svg width='%d' height='%d'><text x='10' y='%d' "
-                 "fill='#888'>Buffer too small</text></svg>", width, height, height/2);
-        return;
-    }
-    
-    // Find min/max for scaling
-    float min_val = 0.0f;   // 0%
-    float max_val = 100.0f;   // 100%
-    
+
+    // Downsample to at most CHART_MAX_DISPLAY_POINTS, evenly spaced across the stored range
+    int display_count = (count < CHART_MAX_DISPLAY_POINTS) ? count : CHART_MAX_DISPLAY_POINTS;
+    int oldest_idx = (index - count + HISTORY_SIZE) % HISTORY_SIZE;
+
+    float min_val = 0.0f, max_val = 100.0f;
     float range = max_val - min_val;
-    if (range <= 0.0001f) range = 1.0f;
-    int margin = 40;  // Increased for axis labels
-    int chart_w = width - 2 * margin;
-    int chart_h = height - 2 * margin;
-    
-    // Calculate time span: oldest point age in seconds
-    int64_t oldest_idx = (index - count + HISTORY_SIZE) % HISTORY_SIZE;
-    int64_t oldest_timestamp = history_ts[oldest_idx];
-    int64_t time_span_us = current_time_us - oldest_timestamp;
-    double time_span_hours = time_span_us / (3600.0 * 1e6);
-    if (time_span_hours < 0.001) time_span_hours = 0.001;  // Avoid division by zero
-    
-    // Build points string for polyline (allocate on heap to avoid large stack usage)
-    const int points_size = 4096;  // Increased to accommodate all history points
-    char *points_a = malloc(points_size);
-    char *points_b = malloc(points_size);
-    char *points_c = malloc(points_size);
-    char *points_d = malloc(points_size);
-    if (!points_a || !points_b || !points_c || !points_d) {
-        if (points_a) free(points_a);
-        if (points_b) free(points_b);
-        if (points_c) free(points_c);
-        if (points_d) free(points_d);
-        snprintf(buf, buf_size, "<svg width='%d' height='%d'><text x='10' y='%d' "
-                 "fill='#888'>No memory for chart</text></svg>", width, height, height/2);
-        return;
-    }
-    int offset_a = 0;
-    int offset_b = 0;
-    int offset_c = 0;
-    int offset_d = 0;
+    int margin_left = 45, margin_right = 15, margin_top = 15, margin_bottom = 40;
+    int chart_w = width - margin_left - margin_right;
+    int chart_h = height - margin_top - margin_bottom;
 
-    points_a[0] = '\0'; points_b[0] = '\0'; points_c[0] = '\0'; points_d[0] = '\0';
+    off += snprintf(buf + off, buf_size - off,
+        "<svg width='%d' height='%d' style='background:#232323;border-radius:8px;'>", width, height);
 
-    for (int i = 0; i < count; i++) {
-        // Read from oldest to newest
-        int idx = (index - count + i + HISTORY_SIZE) % HISTORY_SIZE;
-        int64_t age_us = current_time_us - history_ts[idx];
-        double age_hours = age_us / (3600.0 * 1e6);
-        // x position: right-to-left (newest on right), proportional to age
-        int x = margin + chart_w - (int)((age_hours / time_span_hours) * chart_w);
-        int y = 0;
-
-        int remaining, ret;
-
-        y = margin + chart_h - (int)(((history_a[idx] - min_val) / range) * chart_h);
-        remaining = points_size - offset_a;
-        ret = snprintf(points_a + offset_a, remaining, "%d,%d ", x, y);
-        if (ret < 0) break;
-        if (ret >= remaining) { offset_a = points_size - 1; break; }
-        offset_a += ret;
-
-        y = margin + chart_h - (int)(((history_b[idx] - min_val) / range) * chart_h);
-        remaining = points_size - offset_b;
-        ret = snprintf(points_b + offset_b, remaining, "%d,%d ", x, y);
-        if (ret < 0) break;
-        if (ret >= remaining) { offset_b = points_size - 1; break; }
-        offset_b += ret;
-
-        y = margin + chart_h - (int)(((history_c[idx] - min_val) / range) * chart_h);
-        remaining = points_size - offset_c;
-        ret = snprintf(points_c + offset_c, remaining, "%d,%d ", x, y);
-        if (ret < 0) break;
-        if (ret >= remaining) { offset_c = points_size - 1; break; }
-        offset_c += ret;
-
-        y = margin + chart_h - (int)(((history_d[idx] - min_val) / range) * chart_h);
-        remaining = points_size - offset_d;
-        ret = snprintf(points_d + offset_d, remaining, "%d,%d ", x, y);
-        if (ret < 0) break;
-        if (ret >= remaining) { offset_d = points_size - 1; break; }
-        offset_d += ret;
-    }
-    
-    // Build SVG with grid
-    char *svg_grid = malloc(2048);
-    if (!svg_grid) {
-        free(points_a); free(points_b); free(points_c); free(points_d);
-        snprintf(buf, buf_size, "<svg width='%d' height='%d'></svg>", width, height);
-        return;
-    }
-    int grid_offset = 0;
-    
-    // Vertical grid lines (5 divisions = every 20%)
-    for (int i = 0; i <= 5; i++) {
-        int y_pos = margin + (i * chart_h) / 5;
-        grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
+    // Horizontal grid lines + Y-axis (%) labels
+    for (int i = 0; i <= 5 && off < buf_size; i++) {
+        int y = margin_top + (i * chart_h) / 5;
+        off += snprintf(buf + off, buf_size - off,
             "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
-            "<text x='5' y='%d' fill='#888' font-size='9'>%.0f%%</text>",
-            margin, y_pos, margin + chart_w, y_pos,
-            y_pos + 3, max_val - (i * (max_val - min_val) / 5));
+            "<text x='2' y='%d' fill='#888' font-size='9'>%.0f%%</text>",
+            margin_left, y, margin_left + chart_w, y, y + 3, max_val - (i * (max_val - min_val) / 5));
     }
-    
-    // Horizontal grid lines (adaptive intervals: minutes for short spans, hours for long spans)
-    double interval = 1.0;  // Default to 1 hour
-    if (time_span_hours < 0.25) {
-        interval = 0.05;  // 3 minutes for very short spans
-    } else if (time_span_hours < 1.0) {
-        interval = 0.167;  // 10 minutes
-    } else if (time_span_hours < 2.0) {
-        interval = 0.5;  // 30 minutes
-    } else if (time_span_hours < 6.0) {
-        interval = 1.0;  // 1 hour
-    } else if (time_span_hours < 24.0) {
-        interval = 2.0;  // 2 hours
-    } else {
-        interval = 6.0;  // 6 hours for longer spans
+
+    // Determine whether the span crosses a day boundary, to decide label format
+    time_t newest_ts = history_ts[(index - 1 + HISTORY_SIZE) % HISTORY_SIZE];
+    time_t oldest_ts_full = history_ts[oldest_idx];
+    double span_s = difftime(newest_ts, oldest_ts_full);
+    bool show_date = span_s > 86400.0;
+
+    // X-axis: 6 evenly spaced real date/time labels drawn from actual stored timestamps
+    int n_labels = 6;
+    for (int L = 0; L <= n_labels && off < buf_size; L++) {
+        int pt_idx = (display_count > 1) ? (int)((double)L / n_labels * (display_count - 1)) : 0;
+        // map display index back to the real (downsampled) source index
+        int src_idx = (display_count > 1) ? (int)((double)pt_idx / (display_count - 1) * (count - 1)) : 0;
+        int real_idx = (oldest_idx + src_idx) % HISTORY_SIZE;
+        time_t ts = history_ts[real_idx];
+        int x = margin_left + (display_count > 1 ? (int)((double)pt_idx / (display_count - 1) * chart_w) : chart_w / 2);
+
+        struct tm tmv;
+        localtime_r(&ts, &tmv);
+        char label[20];
+        strftime(label, sizeof(label), show_date ? "%d/%m %H:%M" : "%H:%M", &tmv);
+
+        off += snprintf(buf + off, buf_size - off,
+            "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
+            "<text x='%d' y='%d' fill='#888' font-size='9' text-anchor='middle'>%s</text>",
+            x, margin_top, x, margin_top + chart_h, x, margin_top + chart_h + 14, label);
     }
-    
-    for (double h = 0; h <= time_span_hours + interval; h += interval) {
-        int x_pos = margin + chart_w - (int)((h / time_span_hours) * chart_w);
-        if (x_pos >= margin && x_pos <= margin + chart_w) {
-            // Format label based on interval
-            const char *fmt = "";
-            if (interval < 0.1) {
-                fmt = "-%dm";  // Show minutes
-                int min = (int)(h * 60);
-                grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
-                    "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
-                    "<text x='%d' y='%d' fill='#888' font-size='9'>%dm</text>",
-                    x_pos, margin, x_pos, margin + chart_h,
-                    x_pos - 10, margin + chart_h + 15, min);
-            } else if (interval < 0.5) {
-                int min = (int)(h * 60);
-                grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
-                    "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
-                    "<text x='%d' y='%d' fill='#888' font-size='9'>-%dm</text>",
-                    x_pos, margin, x_pos, margin + chart_h,
-                    x_pos - 12, margin + chart_h + 15, min);
-            } else {
-                int hr = (int)h;
-                grid_offset += snprintf(svg_grid + grid_offset, 2048 - grid_offset,
-                    "<line x1='%d' y1='%d' x2='%d' y2='%d' stroke='#444' stroke-width='1'/>"
-                    "<text x='%d' y='%d' fill='#888' font-size='9'>-%dh</text>",
-                    x_pos, margin, x_pos, margin + chart_h,
-                    x_pos - 10, margin + chart_h + 15, hr);
-            }
+
+    // Markers only, no connecting lines
+    static const char* colors[4] = {"#5778a4", "#e49444", "#d1615d", "#6a9f58"};
+    float* series[4] = {history_a, history_b, history_c, history_d};
+
+    for (int s = 0; s < 4; s++) {
+        for (int i = 0; i < display_count; i++) {
+            int src_idx = (display_count > 1) ? (int)((double)i / (display_count - 1) * (count - 1)) : 0;
+            int real_idx = (oldest_idx + src_idx) % HISTORY_SIZE;
+            int x = margin_left + (display_count > 1 ? (int)((double)i / (display_count - 1) * chart_w) : chart_w / 2);
+            float v = series[s][real_idx];
+            int y = margin_top + chart_h - (int)(((v - min_val) / range) * chart_h);
+
+            if (off + 70 >= buf_size) goto done; // leave headroom, bail cleanly if ever near full
+            off += snprintf(buf + off, buf_size - off,
+                "<circle cx='%d' cy='%d' r='2' fill='%s'/>", x, y, colors[s]);
         }
     }
-    
-    snprintf(buf, buf_size,
-        "<svg width='%d' height='%d' style='background:#232323;border-radius:8px;'>"
-        "%s"
-        "<polyline points='%s' fill='none' stroke='#5778a4' stroke-width='2'/>"
-        "<polyline points='%s' fill='none' stroke='#e49444' stroke-width='2'/>"
-        "<polyline points='%s' fill='none' stroke='#d1615d' stroke-width='2'/>"
-        "<polyline points='%s' fill='none' stroke='#6a9f58' stroke-width='2'/>"
-        "</svg>",
-        width, height, svg_grid, points_a, points_b, points_c, points_d);
 
-    free(points_a); free(points_b); free(points_c); free(points_d); free(svg_grid);
+done:
+    off += snprintf(buf + off, buf_size - off, "</svg>");
+    return buf;
 }
+
 
 // ============================================================================
 // HTML Page (embedded as string)
@@ -631,16 +576,10 @@ static const char* task_state_to_str(eTaskState state) {
 static esp_err_t root_handler(httpd_req_t *req) {
 
 
-    // Generate chart SVG (allocate on heap to avoid large stack usage)
-    size_t chart_svg_size = 2560;
-    char *chart_svg = malloc(chart_svg_size);
-    if (chart_svg == NULL) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed for chart");
-        return ESP_FAIL;
-    }
-    int64_t current_time_us = esp_timer_get_time();
-    generate_chart_svg(chart_svg, chart_svg_size, var_a_history, var_b_history, var_c_history, var_d_history,
-                        history_timestamps, history_index, history_count, 1000+4*15, 200, current_time_us);  // width=1000 + margins for grid gaps
+    // Generate chart SVG
+    const char *chart_svg = generate_chart_svg(var_a_history, var_b_history, var_c_history, var_d_history,
+                                            history_timestamps, history_index, history_count,
+                                            1000 + 4 * 15, 220);
 
     // Gather system info
     size_t total_heap = heap_caps_get_total_size(MALLOC_CAP_8BIT);;
@@ -692,28 +631,17 @@ static esp_err_t root_handler(httpd_req_t *req) {
     format_bytes(total_dma, total_dma_str, sizeof(total_dma_str));
     format_bytes(free_dma, free_dma_str, sizeof(free_dma_str));
 
-
-    // Build task list HTML
-        // Build task list HTML (allocate on heap)
-        size_t task_list_size = 2048;
-        char *task_list = malloc(task_list_size);
-        if (task_list == NULL) {
-            free(chart_svg);
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed for task list");
-            return ESP_FAIL;
-        }
-        task_list[0] = '\0';
     
 #if configUSE_TRACE_FACILITY
     int offset = 0;
     TaskStatus_t *task_array = pvPortMalloc(task_count * sizeof(TaskStatus_t));
     if (task_array != NULL) {
         UBaseType_t actual_count = uxTaskGetSystemState(task_array, task_count, NULL);
-            for (UBaseType_t i = 0; i < actual_count && offset < (int)task_list_size - 150; i++) {
+            for (UBaseType_t i = 0; i < actual_count && offset < sizeof(task_list_buf) - 150; i++) {
             char stack_str[32];
             format_bytes(task_array[i].usStackHighWaterMark * sizeof(StackType_t), 
                         stack_str, sizeof(stack_str));
-                offset += snprintf(task_list + offset, task_list_size - offset,
+                offset += snprintf(task_list_buf + offset, sizeof(task_list_buf) - offset,
                 "<tr><td>%s</td><td>%lu</td><td>%s</td><td>%s</td></tr>",
                 task_array[i].pcTaskName,
                 (unsigned long)task_array[i].uxCurrentPriority,
@@ -728,56 +656,31 @@ static esp_err_t root_handler(httpd_req_t *req) {
         "Enable configUSE_TRACE_FACILITY in sdkconfig for task details</td></tr>");
 #endif
 
-    // Allocate buffer for complete HTML
-    // Template is ~4KB, task_list up to 2KB, variables add ~200 bytes
-    size_t html_size = 16384; // ideally, size should be strlen(html_page_template) + 2048 (but compiler throws an error);
     // The lines below should suppress format-truncation warning if strlen(html_page_template) is used but throws an error
     // #pragma GCC diagnostic push
     // #pragma GCC diagnostic ignored "-Wformat-truncation"
     // plus don't forget #pragma GCC diagnostic pop below before return
-
-    char *html = malloc(html_size);
-    if (html == NULL) {
-            free(task_list);
-            free(chart_svg);
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
-        return ESP_FAIL;
-    }
     
-    // Prepare logs HTML
-    size_t logs_html_size = 4096;
-    char *logs_html = malloc(logs_html_size);
-    if (logs_html == NULL) {
-        free(task_list);
-        free(chart_svg);
-        free(html);
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed for logs");
-        return ESP_FAIL;
-    }
-    get_logs_html(logs_html, logs_html_size);
+    
 
-    int written = snprintf(html, html_size, html_page_template,
+    get_logs_html(logs_buf, sizeof(logs_buf));
+    int written = snprintf(html_buf, sizeof(html_buf), html_page_template,
         var_a, var_b, var_c, var_d, var_e, 
         get_history_update_interval_s(), datetime_now_str, chart_svg,
         total_heap_str, free_heap_str, min_heap_str, total_internal_str, free_internal_str, largest_free_block_str, total_dma_str, free_dma_str,
         (unsigned long)uptime_sec, (long)rssi, reset_reason_str, mac_str,
         (unsigned long)task_count,
-        logs_html,
-        task_list);
+        logs_buf,
+        task_list_buf);
     
-    if (written < 0 || written >= (int)html_size) {
-        ESP_LOGE(TAG, "HTML buffer overflow, written %d bytes into %zu bytes", written, html_size);
-        free(html);
+    if (written < 0 || written >= (int)sizeof(html_buf)) {
+        ESP_LOGE(TAG, "HTML buffer overflow, written %d bytes into %zu bytes", written, sizeof(html_buf));
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "HTML generation failed");
         return ESP_FAIL;
     }
     
     httpd_resp_set_type(req, "text/html");
-    httpd_resp_send(req, html, HTTPD_RESP_USE_STRLEN);
-    free(html);
-        free(task_list);
-        free(chart_svg);
-        free(logs_html);
+    httpd_resp_send(req, html_buf, HTTPD_RESP_USE_STRLEN);
     
     // #pragma GCC diagnostic pop // restore warnings
     return ESP_OK;
@@ -866,16 +769,9 @@ static esp_err_t reboot_handler(httpd_req_t *req) {
 
 static esp_err_t logs_handler(httpd_req_t *req) {
     // Return current logs as plain text
-    size_t logs_size = 4096;
-    char *logs_text = malloc(logs_size);
-    if (logs_text == NULL) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Memory allocation failed");
-        return ESP_FAIL;
-    }
-    get_logs_html(logs_text, logs_size);
+    get_logs_html(logs_buf, sizeof(logs_buf));
     httpd_resp_set_type(req, "text/plain");
-    httpd_resp_send(req, logs_text, HTTPD_RESP_USE_STRLEN);
-    free(logs_text);
+    httpd_resp_send(req, logs_buf, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
 

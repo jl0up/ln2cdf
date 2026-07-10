@@ -25,5 +25,6 @@ void stop_webserver(httpd_handle_t server);
  * @param e String value (will be copied, max 255 chars)
  */
 void webpage_update(float a, float b, float c, float d, const char *e);
+void webpage_record_history(float a, float b, float c, float d);
 
 #endif // WEBSERVER_H
